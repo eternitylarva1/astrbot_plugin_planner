@@ -60,7 +60,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • /计划 现在做作业1小时
   • create_planner_task("明天上午9点开会1小时")
 """,
-    "1.0.0",
+    "1.0.1",
 )
 class PlannerPlugin(Star):
     """计划助手插件"""
@@ -946,7 +946,7 @@ class PlannerPlugin(Star):
             # 模糊时长（"大概左右"等）+ 有具体数字，检查原始输入是否包含模糊词
             fuzzy_keywords = {"大概", "左右", "估计", "差不多", "些许"}
             has_fuzzy = any(kw in user_input for kw in fuzzy_keywords)
-            
+
             if has_fuzzy:
                 # 提取估算值并询问确认
                 m = re.search(
