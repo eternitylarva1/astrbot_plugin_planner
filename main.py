@@ -60,7 +60,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • /计划 现在做作业1小时
   • create_planner_task("明天上午9点开会1小时")
 """,
-    "1.0.3",
+    "1.0.4",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
@@ -101,6 +101,19 @@ class PlannerPlugin(Star):
     ) -> MessageEventResult:
         """根据查询文本渲染可视化日程图。"""
         user_input = (query_text or "").lower()
+        chart_style = "timeline"
+        style_patterns = {
+            "card": ["卡片", "卡片风格", "卡片样式"],
+            "compact": ["紧凑", "列表", "简洁"],
+            "timeline": ["时间轴", "竖轴", "纵向"],
+        }
+        for style, patterns in style_patterns.items():
+            if any(p in user_input for p in patterns):
+                chart_style = style
+                for p in patterns:
+                    user_input = user_input.replace(p, " ")
+                break
+        user_input = user_input.strip()
         today = date.today()
 
         # 解析日期范围
@@ -159,7 +172,9 @@ class PlannerPlugin(Star):
 
         # 获取任务并渲染
         tasks = await self.task_service.get_tasks_by_date(target_date)
-        html = self.visualizer.render_daily_schedule(tasks, target_date)
+        html = self.visualizer.render_daily_schedule(
+            tasks, target_date, style=chart_style
+        )
         image_url = await self.html_render(html, {})
         yield event.image_result(image_url)
 
@@ -321,6 +336,8 @@ class PlannerPlugin(Star):
         /图表 今天
         /图表 本周
         /图表 下周
+        /图表 卡片 本周
+        /图表 紧凑 明天
         """
         user_input = _strip_cmd(
             event.message_str, "图表", "可视化", "查看图表", "查看可视化"
