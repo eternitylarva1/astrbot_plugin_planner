@@ -80,7 +80,84 @@ class Visualizer:
         except (ValueError, TypeError):
             return default
 
-    def render_daily_schedule(self, tasks: List[Task], target_date: date) -> str:
+    def _render_daily_timeline_items(self, tasks: List[Task]) -> str:
+        """渲染日视图：时间轴样式（默认）"""
+        rows = []
+        for task in tasks:
+            color, bg_color = self._get_task_color(task.name)
+            emoji = self._get_task_emoji(task.name)
+            start_str = (
+                task.start_time.strftime("%H:%M") if task.start_time else "--:--"
+            )
+            end_dt = (
+                task.start_time
+                + timedelta(minutes=self._safe_int(task.duration_minutes))
+                if task.start_time
+                else None
+            )
+            end_str = end_dt.strftime("%H:%M") if end_dt else "--:--"
+            status_icon = "✅" if task.status == "done" else "🔲"
+            rows.append(f"""
+            <div class="timeline-item">
+                <div class="timeline-time">
+                    <div>{start_str}</div>
+                    <div class="timeline-time-end">{end_str}</div>
+                </div>
+                <div class="timeline-dot" style="border-color: {color}; background: {bg_color};"></div>
+                <div class="timeline-card" style="background: {bg_color}; border-left: 4px solid {color};">
+                    <div class="task-content">
+                        <span class="task-emoji">{emoji}</span>
+                        <span class="task-name">{task.name}</span>
+                        <span class="task-duration">{self._safe_int(task.duration_minutes)}分钟</span>
+                        <span class="task-status">{status_icon}</span>
+                    </div>
+                </div>
+            </div>
+            """)
+        return "\n".join(rows)
+
+    def _render_daily_card_items(self, tasks: List[Task]) -> str:
+        """渲染日视图：卡片样式"""
+        cards = []
+        for task in tasks:
+            color, bg_color = self._get_task_color(task.name)
+            emoji = self._get_task_emoji(task.name)
+            time_str = task.start_time.strftime("%H:%M") if task.start_time else "--:--"
+            status_icon = "✅" if task.status == "done" else "🔲"
+            cards.append(f"""
+            <div class="daily-card" style="background:{bg_color}; border-top:4px solid {color};">
+                <div class="daily-card-head">
+                    <span>{emoji} {task.name}</span>
+                    <span>{status_icon}</span>
+                </div>
+                <div class="daily-card-meta">
+                    <span>⏰ {time_str}</span>
+                    <span>⏱️ {self._safe_int(task.duration_minutes)}分钟</span>
+                </div>
+            </div>
+            """)
+        return "\n".join(cards)
+
+    def _render_daily_compact_items(self, tasks: List[Task]) -> str:
+        """渲染日视图：紧凑样式"""
+        items = []
+        for task in tasks:
+            color, _ = self._get_task_color(task.name)
+            emoji = self._get_task_emoji(task.name)
+            time_str = task.start_time.strftime("%H:%M") if task.start_time else "--:--"
+            status_icon = "✅" if task.status == "done" else "🔲"
+            items.append(f"""
+            <div class="compact-item">
+                <span class="compact-color" style="background:{color};"></span>
+                <span>{emoji} {task.name}</span>
+                <span class="compact-meta">{time_str} · {self._safe_int(task.duration_minutes)}分钟 · {status_icon}</span>
+            </div>
+            """)
+        return "\n".join(items)
+
+    def render_daily_schedule(
+        self, tasks: List[Task], target_date: date, style: str = "timeline"
+    ) -> str:
         """渲染今日/指定日期的日程HTML"""
 
         # 排序任务
@@ -117,47 +194,23 @@ class Visualizer:
         free_minutes = available_minutes - total_minutes
         free_hours = self._safe_float(free_minutes) / 60 if free_minutes > 0 else 0
 
-        # 生成任务条HTML
-        task_rows = []
-        for task in sorted_tasks:
-            color, bg_color = self._get_task_color(task.name)
-            emoji = self._get_task_emoji(task.name)
+        style_alias = {
+            "timeline": "timeline",
+            "vertical": "timeline",
+            "card": "card",
+            "compact": "compact",
+        }
+        resolved_style = style_alias.get((style or "").lower(), "timeline")
 
-            start_str = (
-                task.start_time.strftime("%H:%M") if task.start_time else "--:--"
-            )
-            end_dt = (
-                task.start_time
-                + timedelta(minutes=self._safe_int(task.duration_minutes))
-                if task.start_time
-                else None
-            )
-            end_str = end_dt.strftime("%H:%M") if end_dt else "--:--"
-
-            status_icon = "✅" if task.status == "done" else "🔲"
-
-            task_rows.append(f"""
-            <div class="task-row" style="margin-bottom: 12px;">
-                <div class="task-time">{start_str}</div>
-                <div class="task-bar-container">
-                    <div class="task-bar" style="background: {bg_color}; border-left: 4px solid {color};">
-                        <div class="task-content">
-                            <span class="task-emoji">{emoji}</span>
-                            <span class="task-name">{task.name}</span>
-                            <span class="task-duration">{self._safe_int(task.duration_minutes)}分钟</span>
-                            <span class="task-status">{status_icon}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="task-end-time">{end_str}</div>
-            </div>
-            """)
-
-        task_rows_html = (
-            "\n".join(task_rows)
-            if task_rows
-            else '<div class="no-tasks">暂无任务安排</div>'
-        )
+        if sorted_tasks:
+            if resolved_style == "card":
+                task_rows_html = self._render_daily_card_items(sorted_tasks)
+            elif resolved_style == "compact":
+                task_rows_html = self._render_daily_compact_items(sorted_tasks)
+            else:
+                task_rows_html = self._render_daily_timeline_items(sorted_tasks)
+        else:
+            task_rows_html = '<div class="no-tasks">暂无任务安排</div>'
 
         # 周几
         weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
@@ -172,16 +225,22 @@ class Visualizer:
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
+            padding: 0;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }}
         .container {{
-            background: white;
-            border-radius: 20px;
-            padding: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
+            width: 96vw;
+            max-width: 1280px;
+            min-height: 92vh;
             margin: 0 auto;
+            color: #1f2937;
         }}
         .header {{
             display: flex;
@@ -192,46 +251,70 @@ class Visualizer:
             border-bottom: 2px solid #f0f0f0;
         }}
         .title {{
-            font-size: 24px;
+            font-size: 30px;
             font-weight: 700;
-            color: #333;
+            color: #111827;
             display: flex;
             align-items: center;
             gap: 8px;
         }}
         .date-badge {{
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            padding: 4px 12px;
+            background: #eef2ff;
+            color: #3730a3;
+            padding: 6px 14px;
             border-radius: 20px;
-            font-size: 14px;
-            font-weight: 500;
+            font-size: 16px;
+            font-weight: 700;
         }}
         .tasks-container {{
             min-height: 200px;
         }}
-        .task-row {{
+        .timeline-item {{
             display: flex;
-            align-items: center;
+            align-items: stretch;
             gap: 12px;
+            margin-bottom: 12px;
+            position: relative;
         }}
-        .task-time {{
-            font-size: 13px;
-            color: #666;
-            width: 45px;
+        .timeline-time {{
+            width: 58px;
             text-align: right;
-            font-weight: 500;
+            font-size: 15px;
+            color: #374151;
+            font-weight: 700;
+            padding-top: 4px;
         }}
-        .task-bar-container {{
+        .timeline-time-end {{
+            margin-top: 4px;
+            font-size: 11px;
+            color: #999;
+        }}
+        .timeline-dot {{
+            width: 14px;
+            min-width: 14px;
+            border-radius: 50%;
+            border: 3px solid #667eea;
+            position: relative;
+            margin-top: 9px;
+            height: 14px;
+        }}
+        .timeline-dot::after {{
+            content: "";
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            height: calc(100% + 24px);
+            background: #eceff5;
+        }}
+        .timeline-item:last-child .timeline-dot::after {{
+            display: none;
+        }}
+        .timeline-card {{
             flex: 1;
-        }}
-        .task-bar {{
             padding: 12px 16px;
             border-radius: 12px;
-            transition: transform 0.2s;
-        }}
-        .task-bar:hover {{
-            transform: translateX(4px);
         }}
         .task-content {{
             display: flex;
@@ -242,25 +325,65 @@ class Visualizer:
             font-size: 18px;
         }}
         .task-name {{
-            font-size: 15px;
-            color: #333;
-            font-weight: 500;
+            font-size: 18px;
+            color: #111827;
+            font-weight: 700;
             flex: 1;
         }}
         .task-duration {{
-            font-size: 12px;
-            color: #666;
+            font-size: 13px;
+            color: #374151;
             background: rgba(0,0,0,0.05);
-            padding: 2px 8px;
+            padding: 4px 10px;
             border-radius: 10px;
+            font-weight: 700;
         }}
         .task-status {{
             font-size: 14px;
         }}
-        .task-end-time {{
+        .daily-card {{
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }}
+        .daily-card-head {{
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+            font-weight: 600;
+            color: #111827;
+        }}
+        .daily-card-meta {{
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            color: #374151;
+            font-size: 14px;
+            font-weight: 700;
+        }}
+        .compact-item {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 16px;
+            color: #111827;
+            font-weight: 700;
+        }}
+        .compact-color {{
+            width: 8px;
+            height: 24px;
+            border-radius: 4px;
+            display: inline-block;
+        }}
+        .compact-meta {{
+            margin-left: auto;
+            color: #374151;
             font-size: 13px;
-            color: #999;
-            width: 45px;
+            font-weight: 700;
         }}
         .no-tasks {{
             text-align: center;
@@ -297,21 +420,22 @@ class Visualizer:
             gap: 6px;
         }}
         .stats-label {{
-            font-size: 13px;
-            color: #666;
+            font-size: 15px;
+            color: #4b5563;
+            font-weight: 700;
         }}
         .stats-value {{
-            font-size: 15px;
+            font-size: 19px;
             font-weight: 600;
-            color: #333;
+            color: #111827;
         }}
         .free-hint {{
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
-            padding: 8px 16px;
+            padding: 10px 18px;
             border-radius: 20px;
-            font-size: 13px;
-            font-weight: 500;
+            font-size: 15px;
+            font-weight: 700;
         }}
         .footer {{
             margin-top: 16px;
@@ -328,6 +452,7 @@ class Visualizer:
                 📅 {target_date.strftime("%Y年%m月%d日")}
                 <span class="date-badge">{weekday}</span>
             </div>
+            <div class="date-badge">样式：{"时间轴" if resolved_style == "timeline" else "卡片" if resolved_style == "card" else "紧凑"}</div>
         </div>
         <div class="tasks-container">
             {task_rows_html}
@@ -410,16 +535,22 @@ class Visualizer:
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
+            padding: 0;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }}
         .container {{
-            background: white;
-            border-radius: 20px;
-            padding: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 900px;
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
+            width: 96vw;
+            max-width: 1500px;
+            min-height: 92vh;
             margin: 0 auto;
+            color: #1f2937;
         }}
         .header {{
             text-align: center;
@@ -428,14 +559,15 @@ class Visualizer:
             border-bottom: 2px solid #f0f0f0;
         }}
         .title {{
-            font-size: 24px;
+            font-size: 30px;
             font-weight: 700;
-            color: #333;
+            color: #111827;
         }}
         .subtitle {{
-            font-size: 14px;
-            color: #999;
+            font-size: 16px;
+            color: #6b7280;
             margin-top: 4px;
+            font-weight: 700;
         }}
         .week-grid {{
             display: grid;
@@ -444,27 +576,30 @@ class Visualizer:
         }}
         .day-column {{
             background: #f8f9fa;
-            border-radius: 12px;
-            padding: 12px;
-            min-height: 200px;
+            border-radius: 14px;
+            padding: 14px;
+            min-height: 280px;
+            color: #1f2937;
         }}
         .day-column.today {{
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
+            background: #eef2ff;
+            color: #1f2937;
+            border: 2px solid #667eea;
         }}
         .day-header {{
             text-align: center;
             margin-bottom: 12px;
             padding-bottom: 8px;
-            border-bottom: 1px solid rgba(0,0,0,0.1);
+            border-bottom: 1px solid rgba(31, 41, 55, 0.12);
         }}
         .day-date {{
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 18px;
+            font-weight: 700;
         }}
         .day-weekday {{
-            font-size: 12px;
-            opacity: 0.8;
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 700;
         }}
         .day-tasks {{
             display: flex;
@@ -472,12 +607,14 @@ class Visualizer:
             gap: 6px;
         }}
         .week-task {{
-            padding: 6px 8px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 10px 10px;
+            border-radius: 8px;
+            font-size: 14px;
             display: flex;
             align-items: center;
             gap: 4px;
+            color: #1f2937;
+            font-weight: 700;
         }}
         .week-task-name {{
             flex: 1;
@@ -486,8 +623,10 @@ class Visualizer:
             white-space: nowrap;
         }}
         .week-task-time {{
-            font-size: 10px;
-            opacity: 0.7;
+            font-size: 12px;
+            opacity: 0.9;
+            color: #4b5563;
+            font-weight: 700;
         }}
         .week-task-empty {{
             text-align: center;

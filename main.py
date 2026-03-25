@@ -60,7 +60,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • /计划 现在做作业1小时
   • create_planner_task("明天上午9点开会1小时")
 """,
-    "1.0.2",
+    "1.0.6",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
@@ -95,6 +95,88 @@ class PlannerPlugin(Star):
         """插件卸载时调用"""
         await self.reminder_service.stop()
         logger.info("计划助手插件已卸载")
+
+    async def _render_schedule_by_text(
+        self, query_text: str, event: AstrMessageEvent
+    ) -> MessageEventResult:
+        """根据查询文本渲染可视化日程图。"""
+        user_input = (query_text or "").lower()
+        chart_style = "timeline"
+        style_patterns = {
+            "card": ["卡片", "卡片风格", "卡片样式"],
+            "compact": ["紧凑", "列表", "简洁"],
+            "timeline": ["时间轴", "竖轴", "纵向"],
+        }
+        for style, patterns in style_patterns.items():
+            if any(p in user_input for p in patterns):
+                chart_style = style
+                for p in patterns:
+                    user_input = user_input.replace(p, " ")
+                break
+        user_input = user_input.strip()
+        today = date.today()
+
+        # 解析日期范围
+        if not user_input or "今天" in user_input or "今日" in user_input:
+            target_date = today
+        elif "明天" in user_input:
+            target_date = today + timedelta(days=1)
+        elif "后天" in user_input:
+            target_date = today + timedelta(days=2)
+        elif "本周" in user_input:
+            tasks_by_date = {}
+            for i in range(7):
+                d = today + timedelta(days=i)
+                tasks = await self.task_service.get_tasks_by_date(d)
+                tasks_by_date[d] = tasks
+
+            html = self.visualizer.render_weekly_schedule(tasks_by_date)
+            image_url = await self.html_render(html, {})
+            yield event.image_result(image_url)
+            return
+        elif "下周" in user_input:
+            tasks_by_date = {}
+            for i in range(7, 14):
+                d = today + timedelta(days=i)
+                tasks = await self.task_service.get_tasks_by_date(d)
+                tasks_by_date[d] = tasks
+
+            html = self.visualizer.render_weekly_schedule(tasks_by_date)
+            image_url = await self.html_render(html, {})
+            yield event.image_result(image_url)
+            return
+        elif any(
+            w in user_input
+            for w in ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        ):
+            # 星期几
+            target_date = today
+            for w in ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]:
+                if w in user_input:
+                    weekday = [
+                        "周一",
+                        "周二",
+                        "周三",
+                        "周四",
+                        "周五",
+                        "周六",
+                        "周日",
+                    ].index(w)
+                    days_until = (weekday - today.weekday()) % 7
+                    if days_until == 0:
+                        days_until = 7
+                    target_date = today + timedelta(days=days_until)
+                    break
+        else:
+            target_date = today
+
+        # 获取任务并渲染
+        tasks = await self.task_service.get_tasks_by_date(target_date)
+        html = self.visualizer.render_daily_schedule(
+            tasks, target_date, style=chart_style
+        )
+        image_url = await self.html_render(html, {})
+        yield event.image_result(image_url)
 
     # ========== 基础指令 ==========
 
@@ -241,72 +323,27 @@ class PlannerPlugin(Star):
         /任务 本周
         /任务 下周
         """
+        user_input = _strip_cmd(event.message_str, "任务", "日程", "查看任务", "计划")
+        async for msg in self._render_schedule_by_text(user_input, event):
+            yield msg
+
+    @filter.command("图表", alias={"可视化", "查看图表", "查看可视化"})
+    async def view_chart(self, event: AstrMessageEvent) -> MessageEventResult:
+        """主动查看可视化图表
+
+        用法：
+        /图表
+        /图表 今天
+        /图表 本周
+        /图表 下周
+        /图表 卡片 本周
+        /图表 紧凑 明天
+        """
         user_input = _strip_cmd(
-            event.message_str, "任务", "日程", "查看任务", "计划"
-        ).lower()
-        today = date.today()
-
-        # 解析日期
-        if not user_input or "今天" in user_input or "今日" in user_input:
-            target_date = today
-        elif "明天" in user_input:
-            target_date = today + timedelta(days=1)
-        elif "后天" in user_input:
-            target_date = today + timedelta(days=2)
-        elif "本周" in user_input:
-            # 返回周视图
-            tasks_by_date = {}
-            for i in range(7):
-                d = today + timedelta(days=i)
-                tasks = await self.task_service.get_tasks_by_date(d)
-                tasks_by_date[d] = tasks
-
-            html = self.visualizer.render_weekly_schedule(tasks_by_date)
-            image_url = await self.html_render(html, {})
-            yield event.image_result(image_url)
-            return
-        elif "下周" in user_input:
-            tasks_by_date = {}
-            for i in range(7, 14):
-                d = today + timedelta(days=i)
-                tasks = await self.task_service.get_tasks_by_date(d)
-                tasks_by_date[d] = tasks
-
-            html = self.visualizer.render_weekly_schedule(tasks_by_date)
-            image_url = await self.html_render(html, {})
-            yield event.image_result(image_url)
-            return
-        elif any(
-            w in user_input
-            for w in ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        ):
-            # 星期几
-            target_date = today
-            for w in ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]:
-                if w in user_input:
-                    weekday = [
-                        "周一",
-                        "周二",
-                        "周三",
-                        "周四",
-                        "周五",
-                        "周六",
-                        "周日",
-                    ].index(w)
-                    days_until = (weekday - today.weekday()) % 7
-                    if days_until == 0:
-                        days_until = 7
-                    target_date = today + timedelta(days=days_until)
-                    break
-        else:
-            # 默认今天
-            target_date = today
-
-        # 获取任务并渲染
-        tasks = await self.task_service.get_tasks_by_date(target_date)
-        html = self.visualizer.render_daily_schedule(tasks, target_date)
-        image_url = await self.html_render(html, {})
-        yield event.image_result(image_url)
+            event.message_str, "图表", "可视化", "查看图表", "查看可视化"
+        )
+        async for msg in self._render_schedule_by_text(user_input, event):
+            yield msg
 
     @filter.command("完成", alias={"done", "已完成"})
     async def complete_task(self, event: AstrMessageEvent) -> MessageEventResult:
