@@ -40,7 +40,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
 
 @register(
     "astrbot_plugin_planner",
-    "计划助手",
+    "eternitylarva1",
     """智能计划助手
 
 📌 支持的时间表达：
@@ -60,7 +60,8 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • /计划 现在做作业1小时
   • create_planner_task("明天上午9点开会1小时")
 """,
-    "1.0.1",
+    "1.0.2",
+    "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
     """计划助手插件"""
