@@ -1,0 +1,5 @@
+计划助手插件 (astrbot_plugin_planner) 安装位置
+
+安装目录: C:\Users\gaoming\.astrbot_launcher\instances\d155e712-eb81-41f9-8183-42fb44bc9e3f\core\data\plugins\astrbot_plugin_planner
+
+创建时间: 2025-03-22

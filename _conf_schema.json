@@ -1,0 +1,14 @@
+{
+  "timeout_seconds": {
+    "description": "创建任务时，等待用户回复的超时时间（秒）",
+    "type": "int",
+    "default": 120,
+    "hint": "超过此时间未回复将自动取消任务创建。推荐 60-600 秒（1-10分钟）"
+  },
+  "remind_before": {
+    "description": "任务开始前多少分钟提醒",
+    "type": "int",
+    "default": 10,
+    "hint": "任务临近时提前提醒的分钟数"
+  }
+}

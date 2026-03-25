@@ -1,0 +1,8 @@
+name: astrbot_plugin_planner
+version: 0.1.0
+description: 智能计划助手 - 自然语言创建任务、智能排程、定时提醒、可视化日程
+author: Your Name
+support_platforms:
+  - aiocqhttp
+  - qq_official
+astrbot_version: ">=4.16"
