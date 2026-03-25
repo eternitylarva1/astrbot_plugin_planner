@@ -225,16 +225,18 @@ class Visualizer:
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
+            padding: 8px;
             min-height: 100vh;
         }}
         .container {{
-            background: white;
+            background: #ffffff;
             border-radius: 20px;
             padding: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
+            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+            width: calc(100vw - 16px);
+            max-width: 920px;
             margin: 0 auto;
+            color: #1f2937;
         }}
         .header {{
             display: flex;
@@ -247,18 +249,18 @@ class Visualizer:
         .title {{
             font-size: 24px;
             font-weight: 700;
-            color: #333;
+            color: #111827;
             display: flex;
             align-items: center;
             gap: 8px;
         }}
         .date-badge {{
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
+            background: #eef2ff;
+            color: #3730a3;
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
         }}
         .tasks-container {{
             min-height: 200px;
@@ -320,7 +322,7 @@ class Visualizer:
         }}
         .task-name {{
             font-size: 15px;
-            color: #333;
+            color: #111827;
             font-weight: 500;
             flex: 1;
         }}
@@ -416,7 +418,7 @@ class Visualizer:
         .stats-value {{
             font-size: 15px;
             font-weight: 600;
-            color: #333;
+            color: #111827;
         }}
         .free-hint {{
             background: linear-gradient(135deg, #667eea, #764ba2);
@@ -524,16 +526,18 @@ class Visualizer:
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
+            padding: 8px;
             min-height: 100vh;
         }}
         .container {{
-            background: white;
+            background: #ffffff;
             border-radius: 20px;
             padding: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 900px;
+            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+            width: calc(100vw - 16px);
+            max-width: 1220px;
             margin: 0 auto;
+            color: #1f2937;
         }}
         .header {{
             text-align: center;
@@ -544,11 +548,11 @@ class Visualizer:
         .title {{
             font-size: 24px;
             font-weight: 700;
-            color: #333;
+            color: #111827;
         }}
         .subtitle {{
             font-size: 14px;
-            color: #999;
+            color: #6b7280;
             margin-top: 4px;
         }}
         .week-grid {{
@@ -561,16 +565,18 @@ class Visualizer:
             border-radius: 12px;
             padding: 12px;
             min-height: 200px;
+            color: #1f2937;
         }}
         .day-column.today {{
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
+            background: #eef2ff;
+            color: #1f2937;
+            border: 2px solid #667eea;
         }}
         .day-header {{
             text-align: center;
             margin-bottom: 12px;
             padding-bottom: 8px;
-            border-bottom: 1px solid rgba(0,0,0,0.1);
+            border-bottom: 1px solid rgba(31, 41, 55, 0.12);
         }}
         .day-date {{
             font-size: 16px;
@@ -578,7 +584,7 @@ class Visualizer:
         }}
         .day-weekday {{
             font-size: 12px;
-            opacity: 0.8;
+            opacity: 0.9;
         }}
         .day-tasks {{
             display: flex;
@@ -592,6 +598,8 @@ class Visualizer:
             display: flex;
             align-items: center;
             gap: 4px;
+            color: #1f2937;
+            font-weight: 500;
         }}
         .week-task-name {{
             flex: 1;
@@ -601,7 +609,8 @@ class Visualizer:
         }}
         .week-task-time {{
             font-size: 10px;
-            opacity: 0.7;
+            opacity: 0.9;
+            color: #4b5563;
         }}
         .week-task-empty {{
             text-align: center;
