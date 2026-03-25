@@ -80,7 +80,84 @@ class Visualizer:
         except (ValueError, TypeError):
             return default
 
-    def render_daily_schedule(self, tasks: List[Task], target_date: date) -> str:
+    def _render_daily_timeline_items(self, tasks: List[Task]) -> str:
+        """渲染日视图：时间轴样式（默认）"""
+        rows = []
+        for task in tasks:
+            color, bg_color = self._get_task_color(task.name)
+            emoji = self._get_task_emoji(task.name)
+            start_str = (
+                task.start_time.strftime("%H:%M") if task.start_time else "--:--"
+            )
+            end_dt = (
+                task.start_time
+                + timedelta(minutes=self._safe_int(task.duration_minutes))
+                if task.start_time
+                else None
+            )
+            end_str = end_dt.strftime("%H:%M") if end_dt else "--:--"
+            status_icon = "✅" if task.status == "done" else "🔲"
+            rows.append(f"""
+            <div class="timeline-item">
+                <div class="timeline-time">
+                    <div>{start_str}</div>
+                    <div class="timeline-time-end">{end_str}</div>
+                </div>
+                <div class="timeline-dot" style="border-color: {color}; background: {bg_color};"></div>
+                <div class="timeline-card" style="background: {bg_color}; border-left: 4px solid {color};">
+                    <div class="task-content">
+                        <span class="task-emoji">{emoji}</span>
+                        <span class="task-name">{task.name}</span>
+                        <span class="task-duration">{self._safe_int(task.duration_minutes)}分钟</span>
+                        <span class="task-status">{status_icon}</span>
+                    </div>
+                </div>
+            </div>
+            """)
+        return "\n".join(rows)
+
+    def _render_daily_card_items(self, tasks: List[Task]) -> str:
+        """渲染日视图：卡片样式"""
+        cards = []
+        for task in tasks:
+            color, bg_color = self._get_task_color(task.name)
+            emoji = self._get_task_emoji(task.name)
+            time_str = task.start_time.strftime("%H:%M") if task.start_time else "--:--"
+            status_icon = "✅" if task.status == "done" else "🔲"
+            cards.append(f"""
+            <div class="daily-card" style="background:{bg_color}; border-top:4px solid {color};">
+                <div class="daily-card-head">
+                    <span>{emoji} {task.name}</span>
+                    <span>{status_icon}</span>
+                </div>
+                <div class="daily-card-meta">
+                    <span>⏰ {time_str}</span>
+                    <span>⏱️ {self._safe_int(task.duration_minutes)}分钟</span>
+                </div>
+            </div>
+            """)
+        return "\n".join(cards)
+
+    def _render_daily_compact_items(self, tasks: List[Task]) -> str:
+        """渲染日视图：紧凑样式"""
+        items = []
+        for task in tasks:
+            color, _ = self._get_task_color(task.name)
+            emoji = self._get_task_emoji(task.name)
+            time_str = task.start_time.strftime("%H:%M") if task.start_time else "--:--"
+            status_icon = "✅" if task.status == "done" else "🔲"
+            items.append(f"""
+            <div class="compact-item">
+                <span class="compact-color" style="background:{color};"></span>
+                <span>{emoji} {task.name}</span>
+                <span class="compact-meta">{time_str} · {self._safe_int(task.duration_minutes)}分钟 · {status_icon}</span>
+            </div>
+            """)
+        return "\n".join(items)
+
+    def render_daily_schedule(
+        self, tasks: List[Task], target_date: date, style: str = "timeline"
+    ) -> str:
         """渲染今日/指定日期的日程HTML"""
 
         # 排序任务
@@ -117,47 +194,23 @@ class Visualizer:
         free_minutes = available_minutes - total_minutes
         free_hours = self._safe_float(free_minutes) / 60 if free_minutes > 0 else 0
 
-        # 生成任务条HTML
-        task_rows = []
-        for task in sorted_tasks:
-            color, bg_color = self._get_task_color(task.name)
-            emoji = self._get_task_emoji(task.name)
+        style_alias = {
+            "timeline": "timeline",
+            "vertical": "timeline",
+            "card": "card",
+            "compact": "compact",
+        }
+        resolved_style = style_alias.get((style or "").lower(), "timeline")
 
-            start_str = (
-                task.start_time.strftime("%H:%M") if task.start_time else "--:--"
-            )
-            end_dt = (
-                task.start_time
-                + timedelta(minutes=self._safe_int(task.duration_minutes))
-                if task.start_time
-                else None
-            )
-            end_str = end_dt.strftime("%H:%M") if end_dt else "--:--"
-
-            status_icon = "✅" if task.status == "done" else "🔲"
-
-            task_rows.append(f"""
-            <div class="task-row" style="margin-bottom: 12px;">
-                <div class="task-time">{start_str}</div>
-                <div class="task-bar-container">
-                    <div class="task-bar" style="background: {bg_color}; border-left: 4px solid {color};">
-                        <div class="task-content">
-                            <span class="task-emoji">{emoji}</span>
-                            <span class="task-name">{task.name}</span>
-                            <span class="task-duration">{self._safe_int(task.duration_minutes)}分钟</span>
-                            <span class="task-status">{status_icon}</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="task-end-time">{end_str}</div>
-            </div>
-            """)
-
-        task_rows_html = (
-            "\n".join(task_rows)
-            if task_rows
-            else '<div class="no-tasks">暂无任务安排</div>'
-        )
+        if sorted_tasks:
+            if resolved_style == "card":
+                task_rows_html = self._render_daily_card_items(sorted_tasks)
+            elif resolved_style == "compact":
+                task_rows_html = self._render_daily_compact_items(sorted_tasks)
+            else:
+                task_rows_html = self._render_daily_timeline_items(sorted_tasks)
+        else:
+            task_rows_html = '<div class="no-tasks">暂无任务安排</div>'
 
         # 周几
         weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
@@ -210,28 +263,52 @@ class Visualizer:
         .tasks-container {{
             min-height: 200px;
         }}
-        .task-row {{
+        .timeline-item {{
             display: flex;
-            align-items: center;
+            align-items: stretch;
             gap: 12px;
+            margin-bottom: 12px;
+            position: relative;
         }}
-        .task-time {{
+        .timeline-time {{
+            width: 58px;
+            text-align: right;
             font-size: 13px;
             color: #666;
-            width: 45px;
-            text-align: right;
             font-weight: 500;
+            padding-top: 4px;
         }}
-        .task-bar-container {{
+        .timeline-time-end {{
+            margin-top: 4px;
+            font-size: 11px;
+            color: #999;
+        }}
+        .timeline-dot {{
+            width: 14px;
+            min-width: 14px;
+            border-radius: 50%;
+            border: 3px solid #667eea;
+            position: relative;
+            margin-top: 9px;
+            height: 14px;
+        }}
+        .timeline-dot::after {{
+            content: "";
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            height: calc(100% + 24px);
+            background: #eceff5;
+        }}
+        .timeline-item:last-child .timeline-dot::after {{
+            display: none;
+        }}
+        .timeline-card {{
             flex: 1;
-        }}
-        .task-bar {{
             padding: 12px 16px;
             border-radius: 12px;
-            transition: transform 0.2s;
-        }}
-        .task-bar:hover {{
-            transform: translateX(4px);
         }}
         .task-content {{
             display: flex;
@@ -257,10 +334,46 @@ class Visualizer:
         .task-status {{
             font-size: 14px;
         }}
-        .task-end-time {{
-            font-size: 13px;
-            color: #999;
-            width: 45px;
+        .daily-card {{
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }}
+        .daily-card-head {{
+            display: flex;
+            justify-content: space-between;
+            font-size: 15px;
+            font-weight: 600;
+            color: #333;
+        }}
+        .daily-card-meta {{
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            color: #666;
+            font-size: 12px;
+        }}
+        .compact-item {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #333;
+        }}
+        .compact-color {{
+            width: 8px;
+            height: 24px;
+            border-radius: 4px;
+            display: inline-block;
+        }}
+        .compact-meta {{
+            margin-left: auto;
+            color: #666;
+            font-size: 12px;
         }}
         .no-tasks {{
             text-align: center;
@@ -328,6 +441,7 @@ class Visualizer:
                 📅 {target_date.strftime("%Y年%m月%d日")}
                 <span class="date-badge">{weekday}</span>
             </div>
+            <div class="date-badge">样式：{"时间轴" if resolved_style == "timeline" else "卡片" if resolved_style == "card" else "紧凑"}</div>
         </div>
         <div class="tasks-container">
             {task_rows_html}
