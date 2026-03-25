@@ -225,16 +225,20 @@ class Visualizer:
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 8px;
+            padding: 0;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }}
         .container {{
             background: #ffffff;
-            border-radius: 20px;
-            padding: 24px;
-            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
-            width: calc(100vw - 16px);
-            max-width: 920px;
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
+            width: 96vw;
+            max-width: 1280px;
+            min-height: 92vh;
             margin: 0 auto;
             color: #1f2937;
         }}
@@ -247,7 +251,7 @@ class Visualizer:
             border-bottom: 2px solid #f0f0f0;
         }}
         .title {{
-            font-size: 24px;
+            font-size: 30px;
             font-weight: 700;
             color: #111827;
             display: flex;
@@ -257,10 +261,10 @@ class Visualizer:
         .date-badge {{
             background: #eef2ff;
             color: #3730a3;
-            padding: 4px 12px;
+            padding: 6px 14px;
             border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
+            font-size: 16px;
+            font-weight: 700;
         }}
         .tasks-container {{
             min-height: 200px;
@@ -275,9 +279,9 @@ class Visualizer:
         .timeline-time {{
             width: 58px;
             text-align: right;
-            font-size: 13px;
-            color: #666;
-            font-weight: 500;
+            font-size: 15px;
+            color: #374151;
+            font-weight: 700;
             padding-top: 4px;
         }}
         .timeline-time-end {{
@@ -321,17 +325,18 @@ class Visualizer:
             font-size: 18px;
         }}
         .task-name {{
-            font-size: 15px;
+            font-size: 18px;
             color: #111827;
-            font-weight: 500;
+            font-weight: 700;
             flex: 1;
         }}
         .task-duration {{
-            font-size: 12px;
-            color: #666;
+            font-size: 13px;
+            color: #374151;
             background: rgba(0,0,0,0.05);
-            padding: 2px 8px;
+            padding: 4px 10px;
             border-radius: 10px;
+            font-weight: 700;
         }}
         .task-status {{
             font-size: 14px;
@@ -344,27 +349,29 @@ class Visualizer:
         .daily-card-head {{
             display: flex;
             justify-content: space-between;
-            font-size: 15px;
+            font-size: 18px;
             font-weight: 600;
-            color: #333;
+            color: #111827;
         }}
         .daily-card-meta {{
             margin-top: 8px;
             display: flex;
             justify-content: space-between;
-            color: #666;
-            font-size: 12px;
+            color: #374151;
+            font-size: 14px;
+            font-weight: 700;
         }}
         .compact-item {{
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 10px;
+            padding: 10px 12px;
             margin-bottom: 8px;
             background: #f8f9fa;
             border-radius: 10px;
-            font-size: 14px;
-            color: #333;
+            font-size: 16px;
+            color: #111827;
+            font-weight: 700;
         }}
         .compact-color {{
             width: 8px;
@@ -374,8 +381,9 @@ class Visualizer:
         }}
         .compact-meta {{
             margin-left: auto;
-            color: #666;
-            font-size: 12px;
+            color: #374151;
+            font-size: 13px;
+            font-weight: 700;
         }}
         .no-tasks {{
             text-align: center;
@@ -412,21 +420,22 @@ class Visualizer:
             gap: 6px;
         }}
         .stats-label {{
-            font-size: 13px;
-            color: #666;
+            font-size: 15px;
+            color: #4b5563;
+            font-weight: 700;
         }}
         .stats-value {{
-            font-size: 15px;
+            font-size: 19px;
             font-weight: 600;
             color: #111827;
         }}
         .free-hint {{
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
-            padding: 8px 16px;
+            padding: 10px 18px;
             border-radius: 20px;
-            font-size: 13px;
-            font-weight: 500;
+            font-size: 15px;
+            font-weight: 700;
         }}
         .footer {{
             margin-top: 16px;
@@ -526,16 +535,20 @@ class Visualizer:
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 8px;
+            padding: 0;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }}
         .container {{
             background: #ffffff;
-            border-radius: 20px;
-            padding: 24px;
-            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
-            width: calc(100vw - 16px);
-            max-width: 1220px;
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
+            width: 96vw;
+            max-width: 1500px;
+            min-height: 92vh;
             margin: 0 auto;
             color: #1f2937;
         }}
@@ -546,14 +559,15 @@ class Visualizer:
             border-bottom: 2px solid #f0f0f0;
         }}
         .title {{
-            font-size: 24px;
+            font-size: 30px;
             font-weight: 700;
             color: #111827;
         }}
         .subtitle {{
-            font-size: 14px;
+            font-size: 16px;
             color: #6b7280;
             margin-top: 4px;
+            font-weight: 700;
         }}
         .week-grid {{
             display: grid;
@@ -562,9 +576,9 @@ class Visualizer:
         }}
         .day-column {{
             background: #f8f9fa;
-            border-radius: 12px;
-            padding: 12px;
-            min-height: 200px;
+            border-radius: 14px;
+            padding: 14px;
+            min-height: 280px;
             color: #1f2937;
         }}
         .day-column.today {{
@@ -579,12 +593,13 @@ class Visualizer:
             border-bottom: 1px solid rgba(31, 41, 55, 0.12);
         }}
         .day-date {{
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 18px;
+            font-weight: 700;
         }}
         .day-weekday {{
-            font-size: 12px;
+            font-size: 14px;
             opacity: 0.9;
+            font-weight: 700;
         }}
         .day-tasks {{
             display: flex;
@@ -592,14 +607,14 @@ class Visualizer:
             gap: 6px;
         }}
         .week-task {{
-            padding: 6px 8px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 10px 10px;
+            border-radius: 8px;
+            font-size: 14px;
             display: flex;
             align-items: center;
             gap: 4px;
             color: #1f2937;
-            font-weight: 500;
+            font-weight: 700;
         }}
         .week-task-name {{
             flex: 1;
@@ -608,9 +623,10 @@ class Visualizer:
             white-space: nowrap;
         }}
         .week-task-time {{
-            font-size: 10px;
+            font-size: 12px;
             opacity: 0.9;
             color: #4b5563;
+            font-weight: 700;
         }}
         .week-task-empty {{
             text-align: center;
