@@ -1,6 +1,6 @@
 # 计划助手（astrbot_plugin_planner）
 
-一个用于 AstrBot 的计划任务插件，支持自然语言创建任务、补全缺失信息、定时提醒。
+一个用于 AstrBot 的计划任务插件，支持自然语言创建任务、补全缺失信息、定时提醒与任务管理。
 
 ## 功能
 
@@ -8,7 +8,8 @@
 - 交互式补全：缺时间/缺时长时继续询问
 - 支持“现在/立刻/马上”等即时时间表达
 - 支持提醒时间配置（默认提前 10 分钟）
-- 提供 LLM Tool：`create_planner_task`、`set_planner_config`
+- 提供 LLM Tool：`create_planner_task`、`list_planner_tasks`、`complete_planner_task`、`cancel_planner_task`、`set_planner_config`
+- 会话隔离：仅查看/操作当前会话创建的任务，避免跨会话误操作
 
 ## 使用方式
 
@@ -25,6 +26,9 @@
 ### 2) LLM Tool 模式
 
 - `create_planner_task(description)`：单次创建（信息完整时直接创建）
+- `list_planner_tasks(date_text="今天", include_done=false, limit=10)`：查看任务（支持今天/明天/本周/下周）
+- `complete_planner_task(target)`：完成任务（target 可为编号或名称关键字，留空默认完成最近项）
+- `cancel_planner_task(target)`：取消任务（target 可为编号、名称关键字、`all`）
 - `set_planner_config(timeout_seconds, remind_before)`：调整超时与提醒配置
 
 ## 配置项
