@@ -54,13 +54,15 @@ def _strip_cmd(text: str, *aliases: str) -> str:
 📌 使用方式：
   1. /计划 命令：交互式创建，会询问缺少的时间/时长
   2. create_planner_task 工具：一次性提供完整信息，直接创建
+  3. list/complete/cancel_planner_task：自然语言查看/完成/取消任务
 
 📌 示例：
   • /计划 明天下午3点写代码2小时
   • /计划 现在做作业1小时
   • create_planner_task("明天上午9点开会1小时")
+  • list_planner_tasks("本周")
 """,
-    "1.0.6",
+    "1.0.7",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
@@ -90,6 +92,48 @@ class PlannerPlugin(Star):
         self._goal_states: Dict[str, GoalState] = {}  # session_id -> 目标状态
 
         logger.info("计划助手插件已加载")
+
+    @staticmethod
+    def _filter_tasks_by_session(tasks: List[Task], session_origin: str) -> List[Task]:
+        """按会话过滤任务，避免跨会话误操作。"""
+        if not session_origin:
+            return tasks
+        return [t for t in tasks if t.session_origin == session_origin]
+
+    async def _get_session_pending_tasks(self, session_origin: str) -> List[Task]:
+        """获取当前会话的待办任务。"""
+        pending_tasks = await self.task_service.get_pending_tasks()
+        return self._filter_tasks_by_session(pending_tasks, session_origin)
+
+    async def _resolve_pending_task(
+        self, session_origin: str, target: Optional[str]
+    ) -> Optional[Task]:
+        """按编号/名称解析当前会话待办任务。"""
+        pending_tasks = await self._get_session_pending_tasks(session_origin)
+        if not pending_tasks:
+            return None
+
+        if not target:
+            today_tasks = [
+                t for t in pending_tasks if t.start_time and t.start_time.date() == date.today()
+            ]
+            return today_tasks[0] if today_tasks else pending_tasks[0]
+
+        # 尝试编号
+        try:
+            idx = int(target) - 1
+            if 0 <= idx < len(pending_tasks):
+                return pending_tasks[idx]
+            return None
+        except ValueError:
+            pass
+
+        # 名称包含匹配（优先更短的名字，减少误匹配）
+        matched = [t for t in pending_tasks if target in t.name]
+        if not matched:
+            return None
+        matched.sort(key=lambda x: len(x.name))
+        return matched[0]
 
     async def terminate(self):
         """插件卸载时调用"""
@@ -128,6 +172,7 @@ class PlannerPlugin(Star):
             for i in range(7):
                 d = today + timedelta(days=i)
                 tasks = await self.task_service.get_tasks_by_date(d)
+                tasks = self._filter_tasks_by_session(tasks, event.unified_msg_origin)
                 tasks_by_date[d] = tasks
 
             html = self.visualizer.render_weekly_schedule(tasks_by_date)
@@ -139,6 +184,7 @@ class PlannerPlugin(Star):
             for i in range(7, 14):
                 d = today + timedelta(days=i)
                 tasks = await self.task_service.get_tasks_by_date(d)
+                tasks = self._filter_tasks_by_session(tasks, event.unified_msg_origin)
                 tasks_by_date[d] = tasks
 
             html = self.visualizer.render_weekly_schedule(tasks_by_date)
@@ -172,6 +218,7 @@ class PlannerPlugin(Star):
 
         # 获取任务并渲染
         tasks = await self.task_service.get_tasks_by_date(target_date)
+        tasks = self._filter_tasks_by_session(tasks, event.unified_msg_origin)
         html = self.visualizer.render_daily_schedule(
             tasks, target_date, style=chart_style
         )
@@ -357,7 +404,7 @@ class PlannerPlugin(Star):
 
         # 如果没有指定，获取最近的待办任务
         if not user_input:
-            pending_tasks = await self.task_service.get_pending_tasks()
+            pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
             # 只取今天的
             today_tasks = [
                 t
@@ -375,7 +422,7 @@ class PlannerPlugin(Star):
             # 尝试解析任务编号
             try:
                 idx = int(user_input) - 1
-                pending_tasks = await self.task_service.get_pending_tasks()
+                pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
                 if 0 <= idx < len(pending_tasks):
                     task = pending_tasks[idx]
                 else:
@@ -383,7 +430,7 @@ class PlannerPlugin(Star):
                     return
             except ValueError:
                 # 尝试按名称匹配
-                pending_tasks = await self.task_service.get_pending_tasks()
+                pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
                 matched = [t for t in pending_tasks if user_input in t.name]
                 if not matched:
                     yield event.plain_result(f"没有找到包含「{user_input}」的任务")
@@ -430,7 +477,7 @@ class PlannerPlugin(Star):
 
         # -1 或 all → 取消所有待办
         if user_input in ["-1", "all", "全部", "所有"]:
-            pending_tasks = await self.task_service.get_pending_tasks()
+            pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
             if not pending_tasks:
                 yield event.plain_result("📋 没有待办任务")
                 return
@@ -448,7 +495,7 @@ class PlannerPlugin(Star):
         # 尝试解析任务编号
         try:
             idx = int(user_input) - 1
-            pending_tasks = await self.task_service.get_pending_tasks()
+            pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
             if 0 <= idx < len(pending_tasks):
                 task = pending_tasks[idx]
             else:
@@ -456,7 +503,7 @@ class PlannerPlugin(Star):
                 return
         except ValueError:
             # 尝试按名称匹配
-            pending_tasks = await self.task_service.get_pending_tasks()
+            pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
             matched = [t for t in pending_tasks if user_input in t.name]
             if not matched:
                 yield event.plain_result(f"没有找到包含「{user_input}」的任务")
@@ -477,6 +524,9 @@ class PlannerPlugin(Star):
         /待办
         """
         pending_tasks = await self.task_service.get_pending_tasks()
+        pending_tasks = self._filter_tasks_by_session(
+            pending_tasks, event.unified_msg_origin
+        )
 
         if not pending_tasks:
             yield event.plain_result("📋 没有待办任务")
@@ -824,6 +874,120 @@ class PlannerPlugin(Star):
             return "请提供要设置的参数"
 
         return "✅ " + " | ".join(results)
+
+    @filter.llm_tool(name="list_planner_tasks")
+    async def list_planner_tasks(
+        self,
+        event: AstrMessageEvent,
+        date_text: Optional[str] = "今天",
+        include_done: bool = False,
+        limit: int = 10,
+    ) -> str:
+        """查看当前会话任务列表（LLM 工具）。
+
+        Args:
+            date_text(string): 日期范围，如“今天/明天/本周/下周”。
+            include_done(bool): 是否包含已完成任务。
+            limit(int): 最多返回条数，范围 1-30。
+        """
+        if limit < 1:
+            limit = 1
+        if limit > 30:
+            limit = 30
+
+        text = (date_text or "今天").strip().lower()
+        today = date.today()
+
+        if "本周" in text:
+            days = [today + timedelta(days=i) for i in range(7)]
+        elif "下周" in text:
+            days = [today + timedelta(days=i) for i in range(7, 14)]
+        elif "明天" in text:
+            days = [today + timedelta(days=1)]
+        elif "后天" in text:
+            days = [today + timedelta(days=2)]
+        else:
+            days = [today]
+
+        all_tasks: List[Task] = []
+        for d in days:
+            daily_tasks = await self.task_service.get_tasks_by_date(d)
+            daily_tasks = self._filter_tasks_by_session(
+                daily_tasks, event.unified_msg_origin
+            )
+            if not include_done:
+                daily_tasks = [t for t in daily_tasks if t.status == "pending"]
+            all_tasks.extend(daily_tasks)
+
+        if not all_tasks:
+            return "📋 当前范围内没有任务。"
+
+        all_tasks.sort(key=lambda t: t.start_time or datetime.max)
+        lines = [f"📋 任务列表（{date_text or '今天'}）"]
+        for i, task in enumerate(all_tasks[:limit], 1):
+            time_str = (
+                task.start_time.strftime("%m-%d %H:%M") if task.start_time else "待定"
+            )
+            status_emoji = "✅" if task.status == "done" else "⏳"
+            lines.append(f"{i}. {status_emoji} {task.name} [{time_str}]")
+
+        if len(all_tasks) > limit:
+            lines.append(f"... 还有 {len(all_tasks) - limit} 项未展示")
+        return "\n".join(lines)
+
+    @filter.llm_tool(name="complete_planner_task")
+    async def complete_planner_task(
+        self, event: AstrMessageEvent, target: Optional[str] = None
+    ) -> str:
+        """完成当前会话中的任务（支持编号或名称）。
+
+        Args:
+            target(string): 任务编号（如"1"）或任务名关键字；为空时默认完成最近一项。
+        """
+        task = await self._resolve_pending_task(event.unified_msg_origin, target)
+        if not task:
+            return "未找到可完成的任务。请先用 list_planner_tasks 查看任务编号。"
+
+        completed_task = await self.task_service.complete_task(task.id)
+        await self.reminder_service.cancel_reminder(task.id)
+
+        if completed_task and completed_task.completed_at and completed_task.start_time:
+            actual_duration = int(
+                (completed_task.completed_at - completed_task.start_time).total_seconds()
+                / 60
+            )
+            if actual_duration > 0:
+                await self.learning_service.record_duration(task.name, actual_duration)
+
+        return f"✅ 已完成：{task.name}"
+
+    @filter.llm_tool(name="cancel_planner_task")
+    async def cancel_planner_task(self, event: AstrMessageEvent, target: str) -> str:
+        """取消当前会话中的任务（支持编号、名称或 all）。
+
+        Args:
+            target(string): 任务编号、任务名关键字，或 all/-1（取消当前会话全部待办）。
+        """
+        target = (target or "").strip()
+        if not target:
+            return "请提供 target（任务编号/名称，或 all）。"
+
+        if target in {"all", "-1", "全部", "所有"}:
+            pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
+            if not pending_tasks:
+                return "📋 没有可取消的待办任务。"
+            for task in pending_tasks:
+                await self.task_service.cancel_task(task.id)
+                await self.reminder_service.cancel_reminder(task.id)
+            return f"❌ 已取消当前会话全部待办任务，共 {len(pending_tasks)} 项。"
+
+        task = await self._resolve_pending_task(event.unified_msg_origin, target)
+        if not task:
+            return "未找到可取消的任务。请先用 list_planner_tasks 查看任务编号。"
+
+        await self.task_service.cancel_task(task.id)
+        await self.reminder_service.cancel_reminder(task.id)
+        return f"❌ 已取消：{task.name}"
 
     # ========== 命令 ==========
 
