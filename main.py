@@ -273,6 +273,16 @@ class PlannerPlugin(Star):
         )
 
     @staticmethod
+    def _format_learning_change(before: Dict[str, int], after: Dict[str, int]) -> str:
+        """格式化学习数据删除前后对比。"""
+        return (
+            "删除前后对比：\n"
+            f"- 时长习惯：{before.get('durations', 0)} -> {after.get('durations', 0)}\n"
+            f"- 别名习惯：{before.get('aliases', 0)} -> {after.get('aliases', 0)}\n"
+            f"- 时段习惯：{before.get('time_total', 0)} -> {after.get('time_total', 0)}"
+        )
+
+    @staticmethod
     def _extract_plan_task_names(intention: str) -> List[str]:
         """把模糊意图拆成候选任务名列表。"""
         if not intention:
@@ -886,6 +896,92 @@ class PlannerPlugin(Star):
         """
         user_input = _strip_cmd(event.message_str, "学习", "统计", "习惯").lower()
 
+        if user_input.startswith("查看"):
+            user_input = "统计"
+
+        if user_input.startswith("删除"):
+            raw_input = _strip_cmd(event.message_str, "学习", "统计", "习惯")
+            delete_body = raw_input[len("删除") :].strip() if raw_input.startswith("删除") else ""
+            parts = delete_body.split(maxsplit=1)
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "❗参数缺失\n"
+                    "用法：\n"
+                    "/习惯 删除 时长 <任务名>\n"
+                    "/习惯 删除 别名 <alias>\n"
+                    "/习惯 删除 时段 <任务名|complex|simple>"
+                )
+                return
+
+            delete_type = parts[0].strip().lower()
+            target = parts[1].strip()
+            if not target:
+                yield event.plain_result("❗请提供删除目标。")
+                return
+
+            if delete_type == "时长":
+                result = await self.learning_service.delete_duration_pattern(target)
+                if result["removed"]:
+                    yield event.plain_result(
+                        f"✅ 已删除时长习惯：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到时长习惯：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            if delete_type == "别名":
+                result = await self.learning_service.delete_alias(target)
+                if result["removed"]:
+                    yield event.plain_result(
+                        f"✅ 已删除别名：{result['key']}（原映射到 {result['removed_payload']}）\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到别名：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            if delete_type == "时段":
+                result = await self.learning_service.delete_time_pattern(target)
+                if result["removed"]:
+                    removed = ", ".join(result["removed_payload"])
+                    yield event.plain_result(
+                        f"✅ 已删除时段习惯分组：{result['key']}（来源：{result['source']}）\n"
+                        f"原有偏好：{removed or '无'}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到可删除的时段习惯分组：{result['key']}（来源：{result['source']}）\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            yield event.plain_result(
+                "不支持的删除类型，请使用：时长 / 别名 / 时段"
+            )
+            return
+
+        if user_input.startswith("重置"):
+            if "全部" not in user_input:
+                yield event.plain_result("目前仅支持：/习惯 重置 全部")
+                return
+            self._pending_tasks[event.unified_msg_origin] = {
+                "step": "awaiting_learning_reset_confirm",
+                "pending_at": time.perf_counter(),
+            }
+            yield event.plain_result(
+                "⚠️ 即将清空全部学习数据（时长/别名/时段）。\n"
+                "请在 2 分钟内回复「确认重置」继续，回复其他内容将取消。"
+            )
+            return
+
         if "自动" in user_input and any(k in user_input for k in ["开", "启用", "关闭", "关", "状态"]):
             if any(k in user_input for k in ["关闭", "关"]):
                 await self.learning_service.set_auto_learning_enabled(False)
@@ -1002,6 +1098,11 @@ class PlannerPlugin(Star):
             "🧠 学习统计\n"
             "/学习 统计\n"
             "/学习 自动开启|自动关闭\n\n"
+            "/习惯 查看\n"
+            "/习惯 删除 时长 <任务名>\n"
+            "/习惯 删除 别名 <alias>\n"
+            "/习惯 删除 时段 <任务名|complex|simple>\n"
+            "/习惯 重置 全部（需确认）\n\n"
             "🤖 AI 规划（可输入模糊目标）\n"
             "/ai规划 这周把作品集和算法复习安排一下"
         )
@@ -1753,6 +1854,18 @@ class PlannerPlugin(Star):
             else:
                 del self._pending_tasks[session_id]
                 yield event.plain_result("已取消创建任务")
+
+        elif step == "awaiting_learning_reset_confirm":
+            if user_input.strip() == "确认重置":
+                result = await self.learning_service.reset_learning_data(scope="all")
+                del self._pending_tasks[session_id]
+                yield event.plain_result(
+                    "✅ 已重置全部学习数据。\n"
+                    f"{self._format_learning_change(result['before'], result['after'])}"
+                )
+            else:
+                del self._pending_tasks[session_id]
+                yield event.plain_result("已取消重置学习数据。")
 
         # 停止事件传播
         event.stop_event()
