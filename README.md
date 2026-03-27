@@ -52,6 +52,19 @@
 - AstrBot: `>=4.16`
 - 平台：`aiocqhttp`、`qq_official`
 
+## 本地预览/截图调试（开发）
+
+- 直接导出 HTML（不需要浏览器）：
+  - `python scripts/render_preview.py`
+  - 输出文件：`artifacts/previews/daily_timeline.html`
+- 指定样式导出：
+  - `python scripts/render_preview.py --style card`
+  - `python scripts/render_preview.py --style compact`
+- 如果你还想导出 PNG（用于“截图”效果）：
+  1. 安装依赖：`pip install playwright`
+  2. 安装浏览器：`playwright install chromium`
+  3. 执行：`python scripts/render_preview.py --style timeline --png`
+
 ## 仓库
 
 - https://github.com/eternitylarva1/astrbot_plugin_planner
