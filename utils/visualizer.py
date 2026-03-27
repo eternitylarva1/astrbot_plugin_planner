@@ -224,8 +224,8 @@ class Visualizer:
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 0;
+            background: linear-gradient(180deg, #667eea 0%, #5f7fe0 42%, #764ba2 100%);
+            padding: 18px 0;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -233,79 +233,82 @@ class Visualizer:
         }}
         .container {{
             background: #ffffff;
-            border-radius: 24px;
-            padding: 28px;
+            border-radius: 30px;
+            padding: 34px 28px 26px;
             box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
-            width: 96vw;
-            max-width: 720px;
-            min-height: 92vh;
+            width: min(92vw, 560px);
+            min-height: min(94vh, 1120px);
+            aspect-ratio: 1 / 1.92;
             margin: 0 auto;
             color: #1f2937;
+            display: flex;
+            flex-direction: column;
         }}
         .header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
+            margin-bottom: 28px;
+            padding-bottom: 18px;
             border-bottom: 2px solid #f0f0f0;
         }}
         .title {{
-            font-size: 30px;
+            font-size: 38px;
             font-weight: 700;
             color: #111827;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }}
         .date-badge {{
             background: #eef2ff;
             color: #3730a3;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 16px;
+            padding: 8px 16px;
+            border-radius: 24px;
+            font-size: 18px;
             font-weight: 700;
         }}
         .tasks-container {{
-            min-height: 200px;
+            min-height: 620px;
+            flex: 1;
         }}
         .timeline-item {{
             display: flex;
             align-items: stretch;
-            gap: 12px;
-            margin-bottom: 12px;
+            gap: 14px;
+            margin-bottom: 15px;
             position: relative;
         }}
         .timeline-time {{
-            width: 58px;
+            width: 74px;
             text-align: right;
-            font-size: 15px;
+            font-size: 20px;
             color: #374151;
             font-weight: 700;
             padding-top: 4px;
         }}
         .timeline-time-end {{
             margin-top: 4px;
-            font-size: 11px;
+            font-size: 14px;
             color: #999;
         }}
         .timeline-dot {{
-            width: 14px;
-            min-width: 14px;
+            width: 16px;
+            min-width: 16px;
             border-radius: 50%;
             border: 3px solid #667eea;
             position: relative;
-            margin-top: 9px;
-            height: 14px;
+            margin-top: 12px;
+            height: 16px;
         }}
         .timeline-dot::after {{
             content: "";
             position: absolute;
-            top: 14px;
+            top: 16px;
             left: 50%;
             transform: translateX(-50%);
             width: 2px;
-            height: calc(100% + 24px);
+            height: calc(100% + 28px);
             background: #eceff5;
         }}
         .timeline-item:last-child .timeline-dot::after {{
@@ -313,63 +316,63 @@ class Visualizer:
         }}
         .timeline-card {{
             flex: 1;
-            padding: 12px 16px;
-            border-radius: 12px;
+            padding: 16px 18px;
+            border-radius: 14px;
         }}
         .task-content {{
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }}
         .task-emoji {{
-            font-size: 18px;
+            font-size: 24px;
         }}
         .task-name {{
-            font-size: 18px;
+            font-size: 24px;
             color: #111827;
             font-weight: 700;
             flex: 1;
         }}
         .task-duration {{
-            font-size: 13px;
+            font-size: 16px;
             color: #374151;
             background: rgba(0,0,0,0.05);
-            padding: 4px 10px;
-            border-radius: 10px;
+            padding: 6px 12px;
+            border-radius: 12px;
             font-weight: 700;
         }}
         .task-status {{
-            font-size: 14px;
+            font-size: 20px;
         }}
         .daily-card {{
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 10px;
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 12px;
         }}
         .daily-card-head {{
             display: flex;
             justify-content: space-between;
-            font-size: 18px;
+            font-size: 22px;
             font-weight: 600;
             color: #111827;
         }}
         .daily-card-meta {{
-            margin-top: 8px;
+            margin-top: 10px;
             display: flex;
             justify-content: space-between;
             color: #374151;
-            font-size: 14px;
+            font-size: 17px;
             font-weight: 700;
         }}
         .compact-item {{
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 12px;
-            margin-bottom: 8px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
             background: #f8f9fa;
             border-radius: 10px;
-            font-size: 16px;
+            font-size: 20px;
             color: #111827;
             font-weight: 700;
         }}
@@ -382,26 +385,26 @@ class Visualizer:
         .compact-meta {{
             margin-left: auto;
             color: #374151;
-            font-size: 13px;
+            font-size: 15px;
             font-weight: 700;
         }}
         .no-tasks {{
             text-align: center;
             color: #999;
-            padding: 40px;
-            font-size: 15px;
+            padding: 80px 40px;
+            font-size: 22px;
         }}
         .stats {{
-            margin-top: 24px;
-            padding-top: 20px;
+            margin-top: 28px;
+            padding-top: 22px;
             border-top: 2px solid #f0f0f0;
         }}
         .progress-bar {{
-            height: 8px;
+            height: 12px;
             background: #f0f0f0;
-            border-radius: 4px;
+            border-radius: 8px;
             overflow: hidden;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }}
         .progress-fill {{
             height: 100%;
@@ -417,41 +420,43 @@ class Visualizer:
         .stats-item {{
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
         }}
         .stats-label {{
-            font-size: 15px;
+            font-size: 20px;
             color: #4b5563;
             font-weight: 700;
         }}
         .stats-value {{
-            font-size: 19px;
+            font-size: 28px;
             font-weight: 600;
             color: #111827;
         }}
         .free-hint {{
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
-            padding: 10px 18px;
-            border-radius: 20px;
-            font-size: 15px;
+            padding: 12px 20px;
+            border-radius: 22px;
+            font-size: 20px;
             font-weight: 700;
         }}
         .footer {{
-            margin-top: 16px;
+            margin-top: 20px;
             text-align: center;
-            font-size: 12px;
-            color: #ccc;
+            font-size: 14px;
+            color: #b5b8c2;
         }}
         @media (max-width: 768px) {{
             body {{
                 align-items: flex-start;
+                padding: 0;
             }}
             .container {{
                 width: 100vw;
                 min-height: 100vh;
+                aspect-ratio: auto;
                 border-radius: 0;
-                padding: 16px;
+                padding: 22px 16px;
             }}
             .header {{
                 flex-direction: column;
@@ -459,15 +464,15 @@ class Visualizer:
                 gap: 8px;
             }}
             .title {{
-                font-size: 24px;
+                font-size: 30px;
             }}
             .task-name {{
-                font-size: 16px;
+                font-size: 20px;
             }}
             .stats-row {{
                 flex-direction: column;
                 align-items: flex-start;
-                gap: 8px;
+                gap: 10px;
             }}
         }}
     </style>
