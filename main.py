@@ -6,7 +6,7 @@
 import asyncio
 import re
 import time
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time as dt_time
 from typing import Optional, List, Dict, Any
 import uuid
 
@@ -55,7 +55,8 @@ def _strip_cmd(text: str, *aliases: str) -> str:
 📌 使用方式：
   1. /计划 命令：交互式创建，会询问缺少的时间/时长
   2. create_planner_task 工具：一次性提供完整信息，直接创建
-  3. list/complete/cancel_planner_task：自然语言查看/完成/取消任务
+  3. plan_with_ai 工具：只给模糊目标也可先自动规划（可选直接创建）
+  4. list/complete/cancel_planner_task：自然语言查看/完成/取消任务
 
 📌 示例：
   • /计划 明天下午3点写代码2小时
@@ -63,7 +64,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • create_planner_task("明天上午9点开会1小时")
   • list_planner_tasks("本周")
 """,
-    "1.0.9",
+    "1.1.0",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
@@ -225,9 +226,75 @@ class PlannerPlugin(Star):
         """统一创建任务后的收尾逻辑。"""
         await self.task_service.create_task(task)
         await self.reminder_service.schedule_reminder(task)
-        await self.learning_service.record_user_specified_duration(
-            task.name, task.duration_minutes
+        time_slot = None
+        if task.start_time:
+            hour = task.start_time.hour
+            if hour < 12:
+                time_slot = "morning"
+            elif hour < 18:
+                time_slot = "afternoon"
+            else:
+                time_slot = "evening"
+        await self.learning_service.record_task_creation_pattern(
+            task.name, time_slot, task.duration_minutes
         )
+
+    @staticmethod
+    def _extract_plan_task_names(intention: str) -> List[str]:
+        """把模糊意图拆成候选任务名列表。"""
+        if not intention:
+            return []
+        segments = re.split(r"[，,。；;\n]|然后|并且|再|接着|以及", intention)
+        cleaned: List[str] = []
+        for seg in segments:
+            s = seg.strip()
+            if not s:
+                continue
+            for prefix in ["帮我", "请", "安排", "计划", "我想", "我需要", "我要", "想要"]:
+                if s.startswith(prefix):
+                    s = s[len(prefix) :].strip()
+            s = re.sub(r"(一下|一下子|吧|呀|哦)$", "", s).strip()
+            if s:
+                cleaned.append(s)
+        return cleaned or [intention.strip()]
+
+    @staticmethod
+    def _slot_to_time(slot: str) -> dt_time:
+        if slot == "morning":
+            return dt_time(hour=9, minute=0)
+        if slot == "afternoon":
+            return dt_time(hour=15, minute=0)
+        return dt_time(hour=20, minute=0)
+
+    async def _plan_by_intention(
+        self, event: AstrMessageEvent, intention: str, horizon_days: int = 7, max_tasks: int = 5
+    ) -> List[Dict[str, Any]]:
+        """根据用户模糊意图自动生成计划建议（基于学习习惯 + 冲突检查）。"""
+        names = self._extract_plan_task_names(intention)[:max_tasks]
+        if not names:
+            return []
+
+        today = date.today()
+        suggestions: List[Dict[str, Any]] = []
+        for idx, name in enumerate(names):
+            duration = await self.learning_service.suggest_duration_minutes(name)
+            slot = await self.learning_service.suggest_time_slot(name)
+            target_day = today + timedelta(days=min(idx, max(horizon_days - 1, 0)))
+            base_time = datetime.combine(target_day, self._slot_to_time(slot))
+            conflicts = await self.task_service.check_conflict(base_time, duration)
+            if conflicts:
+                base_time = await self.task_service.get_next_available_slot(
+                    target_day, duration
+                )
+            suggestions.append(
+                {
+                    "task_name": name,
+                    "start_time": base_time,
+                    "duration": duration,
+                    "slot": slot,
+                }
+            )
+        return suggestions
 
     async def terminate(self):
         """插件卸载时调用"""
@@ -731,6 +798,22 @@ class PlannerPlugin(Star):
         """
         user_input = _strip_cmd(event.message_str, "学习", "统计", "习惯").lower()
 
+        if "自动" in user_input and any(k in user_input for k in ["开", "启用", "关闭", "关", "状态"]):
+            if any(k in user_input for k in ["关闭", "关"]):
+                await self.learning_service.set_auto_learning_enabled(False)
+                yield event.plain_result("🧠 自动学习已关闭。将不再自动更新你的习惯数据。")
+                return
+            if any(k in user_input for k in ["开", "启用"]):
+                await self.learning_service.set_auto_learning_enabled(True)
+                yield event.plain_result("🧠 自动学习已开启。后续会持续学习你的时长与时间偏好。")
+                return
+            enabled = await self.learning_service.is_auto_learning_enabled()
+            yield event.plain_result(
+                f"🧠 自动学习状态：{'开启' if enabled else '关闭'}\n"
+                f"可用命令：/学习 自动开启 或 /学习 自动关闭"
+            )
+            return
+
         if "统计" in user_input or "习惯" in user_input:
             # 显示学习到的统计
             durations = await self.learning_service.get_all_learned_durations()
@@ -751,6 +834,8 @@ class PlannerPlugin(Star):
                 lines.append("\n📝 任务别名：")
                 for alias, canonical in list(aliases.items())[:10]:
                     lines.append(f"  • {alias} = {canonical}")
+            enabled = await self.learning_service.is_auto_learning_enabled()
+            lines.append(f"\n🤖 自动学习：{'开启' if enabled else '关闭'}")
 
             yield event.plain_result("\n".join(lines))
         else:
@@ -827,8 +912,34 @@ class PlannerPlugin(Star):
             "⏱️ 超时设置\n"
             "/设置超时 120\n\n"
             "🧠 学习统计\n"
-            "/学习 统计"
+            "/学习 统计\n"
+            "/学习 自动开启|自动关闭\n\n"
+            "🤖 AI 规划（可输入模糊目标）\n"
+            "/ai规划 这周把作品集和算法复习安排一下"
         )
+
+    @filter.command("ai规划", alias={"智能规划", "规划一下", "自动规划"})
+    async def ai_plan_command(self, event: AstrMessageEvent) -> MessageEventResult:
+        """基于模糊意图自动生成计划建议。"""
+        user_input = _strip_cmd(event.message_str, "ai规划", "智能规划", "规划一下", "自动规划")
+        if not user_input:
+            yield event.plain_result(
+                "请告诉我想做什么，例如：/ai规划 这周把作品集和算法复习安排一下"
+            )
+            return
+
+        suggestions = await self._plan_by_intention(event, user_input, horizon_days=7, max_tasks=5)
+        if not suggestions:
+            yield event.plain_result("暂时无法生成计划，请再具体一点目标。")
+            return
+
+        lines = ["🤖 AI 规划建议（尚未创建任务）", "━━━━━━━━━━━━━━━"]
+        for idx, item in enumerate(suggestions, 1):
+            lines.append(
+                f"{idx}. {item['task_name']} ｜ {item['start_time'].strftime('%m-%d %H:%M')} ｜ {TimeParser.format_duration(item['duration'])}"
+            )
+        lines.append("\n如需落地，请说：创建第1项，或直接用 create_planner_task。")
+        yield event.plain_result("\n".join(lines))
 
     # ========== LLM 工具 - AI 智能调用 ==========
 
@@ -997,6 +1108,78 @@ class PlannerPlugin(Star):
             return "请提供要设置的参数"
 
         return "✅ " + " | ".join(results)
+
+    @filter.llm_tool(name="plan_with_ai")
+    async def plan_with_ai(
+        self,
+        event: AstrMessageEvent,
+        intention: str,
+        horizon: str = "本周",
+        max_tasks: int = 5,
+        auto_create: bool = False,
+    ) -> str:
+        """让 AstrBot 的 LLM 在用户意图模糊时自动规划（可选直接创建）。
+
+        Args:
+            intention(string): 用户目标/意图，可模糊，如“这周把作品集和算法复习安排一下”。
+            horizon(string): 规划范围，可填“今天/本周/下周/7天/14天”。
+            max_tasks(int): 最大建议任务数，1-10。
+            auto_create(bool): 是否直接创建任务。False 为仅建议，True 为创建并排程。
+        """
+        if not intention or not intention.strip():
+            return "请提供 intention（要规划的目标描述）。"
+        if max_tasks < 1:
+            max_tasks = 1
+        if max_tasks > 10:
+            max_tasks = 10
+
+        horizon_text = (horizon or "本周").strip().lower()
+        horizon_days = 7
+        if "今天" in horizon_text:
+            horizon_days = 1
+        elif "下周" in horizon_text or "14" in horizon_text:
+            horizon_days = 14
+
+        suggestions = await self._plan_by_intention(
+            event, intention, horizon_days=horizon_days, max_tasks=max_tasks
+        )
+        if not suggestions:
+            return "暂时无法生成计划，请补充更多目标细节。"
+
+        if not auto_create:
+            lines = ["🤖 AI 规划建议（未创建）"]
+            for idx, item in enumerate(suggestions, 1):
+                lines.append(
+                    f"{idx}. {item['task_name']}｜{item['start_time'].strftime('%Y-%m-%d %H:%M')}｜{TimeParser.format_duration(item['duration'])}"
+                )
+            lines.append("如需落地，可再次调用并传入 auto_create=true。")
+            return "\n".join(lines)
+
+        created = []
+        for item in suggestions:
+            prep = await self._prepare_task_creation(
+                event,
+                item["task_name"],
+                item["start_time"],
+                item["duration"],
+                repeat=None,
+                interactive=False,
+            )
+            if not prep["ok"]:
+                continue
+            task = prep["task"]
+            await self._finalize_task_creation(task)
+            created.append(task)
+
+        if not created:
+            return "⚠️ AI 已生成建议，但由于冲突或信息不足，暂无任务成功创建。"
+
+        lines = [f"✅ 已根据 AI 规划创建 {len(created)} 个任务："]
+        for idx, t in enumerate(created, 1):
+            lines.append(
+                f"{idx}. {t.name}｜{t.start_time.strftime('%m-%d %H:%M')}｜{TimeParser.format_duration(t.duration_minutes)}"
+            )
+        return "\n".join(lines)
 
     @filter.llm_tool(name="list_planner_tasks")
     async def list_planner_tasks(
