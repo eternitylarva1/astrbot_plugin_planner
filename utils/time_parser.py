@@ -58,8 +58,25 @@ class TimeParser:
         """解析时长（分钟数），无法解析时返回 None。"""
         text_lower = text.strip().lower()
 
+        # 先匹配范围时长（例如：2-3小时、2~3小时、2到3小时）
+        range_match = re.search(
+            r"(\d+\.?\d*)\s*(?:-|~|—|到|至)\s*(\d+\.?\d*)\s*(小时|分钟|秒钟|h|min|天|周)",
+            text_lower,
+        )
+        if range_match:
+            # 对范围时长取上限，避免低估任务占用时段
+            value = max(float(range_match.group(1)), float(range_match.group(2)))
+            unit = range_match.group(3)
+            if unit in ("小时", "h"):
+                return int(value * 60)
+            if unit == "天":
+                return int(value * 60 * 24)
+            if unit == "周":
+                return int(value * 60 * 24 * 7)
+            return int(value)
+
         # 先尝试匹配时长（数字 + 单位）
-        dur_match = re.search(r"([+-]?\d+\.?\d*)\s*(?:小时|分钟|秒钟|h|min|天|周)", text_lower)
+        dur_match = re.search(r"(\d+\.?\d*)\s*(?:小时|分钟|秒钟|h|min|天|周)", text_lower)
         if dur_match:
             value = float(dur_match.group(1))
             kw = dur_match.group(0)
@@ -113,16 +130,28 @@ class TimeParser:
         base_date = today
         found_date = False
 
+        # 显式月日：3月28日 / 3月28号
+        md_match = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?", text_lower)
+        if md_match:
+            month = int(md_match.group(1))
+            day = int(md_match.group(2))
+            try:
+                base_date = date(today.year, month, day)
+                found_date = True
+            except ValueError:
+                pass
+
         abs_dates = {
             "今天": 0, "明天": 1, "后天": 2, "大后天": 3,
             "昨天": -1, "前天": -2,
         }
-        for kw, delta in abs_dates.items():
-            idx = text_lower.find(kw)
-            if idx != -1:
-                base_date = today + timedelta(days=delta)
-                found_date = True
-                break
+        if not found_date:
+            for kw, delta in abs_dates.items():
+                idx = text_lower.find(kw)
+                if idx != -1:
+                    base_date = today + timedelta(days=delta)
+                    found_date = True
+                    break
 
         weekday_kws = [
             "周一", "星期一", "周二", "星期二", "周三", "星期三",
@@ -146,12 +175,12 @@ class TimeParser:
                         break
 
         # ---- 提取时间文本：从日期关键词位置开始 ----
-        all_date_kws = list(abs_dates.keys()) + weekday_kws
+        all_date_kws = [r"\d{1,2}\s*月\s*\d{1,2}\s*[日号]?"] + list(abs_dates.keys()) + weekday_kws
         time_text = text_lower
         for kw in all_date_kws:
-            idx = text_lower.find(kw)
-            if idx != -1:
-                time_text = text_lower[idx:].strip()
+            m = re.search(kw, text_lower)
+            if m:
+                time_text = text_lower[m.start():].strip()
                 break
 
         # ---- 解析时间（只在 time_text 中匹配）----
@@ -294,9 +323,16 @@ class TimeParser:
         duration = cls.parse_duration(text)
         if duration:
             result["duration"] = duration
-            # 从文本中移除时长部分（支持整数和小数）
+            # 从文本中移除时长部分（支持区间和整数/小数）
             text = re.sub(
-                r"[\d.]+\s*(?:小时|h|个时|分钟|min|分|点半|点30|刻钟|一刻钟|天|周)\s*", "", text
+                r"[\d.]+\s*(?:-|~|—|到|至)\s*[\d.]+\s*(?:小时|h|个时|分钟|min|分|天|周)\s*",
+                "",
+                text,
+            )
+            text = re.sub(
+                r"[\d.]+\s*(?:小时|h|个时|分钟|min|分|点半|点30|刻钟|一刻钟|天|周)\s*",
+                "",
+                text,
             ).strip()
 
         # 解析日期时间
@@ -339,11 +375,27 @@ class TimeParser:
             "傍晚",
             "晚上",
             "凌晨",
+            r"\d{1,2}\s*月\s*\d{1,2}\s*[日号]?",
             r"\d{1,2}:\d{2}",
             r"\d{1,2}\s*(?:点|时)",
         ]
         for kw in time_keywords:
             name = re.sub(kw, "", name)
+
+        # 移除时长与常见上下文词
+        name = re.sub(
+            r"[\d.]+\s*(?:-|~|—|到|至)\s*[\d.]+\s*(?:小时|分钟|秒钟|h|min|天|周)",
+            "",
+            name,
+        )
+        name = re.sub(r"[\d.]+\s*(?:小时|分钟|秒钟|h|min|天|周)", "", name)
+        name = re.sub(r"(预计持续|预计|持续|需要去做|有一个|请你帮我计划一下|请提前)", "", name)
+
+        # 常见分隔符后优先选择最像任务名的片段
+        segments = [seg.strip(" ，。；;、") for seg in re.split(r"[，。；;、]", name) if seg.strip(" ，。；;、")]
+        if segments:
+            segments.sort(key=len, reverse=True)
+            name = segments[0]
 
         # 移除数字
         name = re.sub(r"\d+", "", name)
