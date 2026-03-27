@@ -1,11 +1,9 @@
 from typing import Dict, Optional, Callable
 from datetime import datetime, timedelta
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.date import DateTrigger
-from apscheduler.triggers.cron import CronTrigger
 from ..models.task import Task
 from .storage_service import StorageService
 from .task_service import TaskService
+from .astrbot_scheduler_adapter import SchedulerAdapter
 from astrbot.api import logger
 
 
@@ -13,33 +11,42 @@ class ReminderService:
     """定时提醒服务"""
 
     def __init__(
-        self, storage: StorageService, task_service: TaskService, context=None
+        self,
+        storage: StorageService,
+        task_service: TaskService,
+        scheduler_adapter: SchedulerAdapter,
     ):
         self.storage = storage
         self.task_service = task_service
-        self.context = context  # AstrBot context for sending messages
-        self.scheduler = AsyncIOScheduler()
+        self.scheduler_adapter = scheduler_adapter
         self._reminder_callbacks: Dict[
             str, Callable
         ] = {}  # task_id -> callback function
-
-    def set_context(self, context):
-        """设置AstrBot context"""
-        self.context = context
+        self._started = False
 
     async def start(self):
-        """启动调度器"""
-        if not self.scheduler.running:
-            self.scheduler.start()
-            logger.info("Reminder scheduler started")
-            # 加载所有待提醒的任务
+        """启动调度器（幂等）。"""
+        if self._started:
+            return
+
+        await self.scheduler_adapter.start()
+        logger.info("Reminder scheduler started")
+
+        # 仅在 fallback 调度器场景由业务层重载任务；
+        # 原生调度器可持久化时避免重复装载。
+        if self.scheduler_adapter.requires_reload_on_start():
             await self._reload_reminders()
+
+        self._started = True
 
     async def stop(self):
         """停止调度器"""
-        if self.scheduler.running:
-            self.scheduler.shutdown(wait=False)
-            logger.info("Reminder scheduler stopped")
+        if not self._started:
+            return
+
+        await self.scheduler_adapter.stop()
+        logger.info("Reminder scheduler stopped")
+        self._started = False
 
     async def _reload_reminders(self):
         """重新加载所有待提醒任务"""
@@ -53,10 +60,6 @@ class ReminderService:
         if not task.start_time:
             return
 
-        # 如果调度器未运行，先启动
-        if not self.scheduler.running:
-            self.scheduler.start()
-
         remind_time = task.start_time - timedelta(minutes=task.remind_before)
 
         # 如果提醒时间已过，跳过
@@ -69,13 +72,14 @@ class ReminderService:
 
         job_id = f"reminder_{task.id}"
 
-        # 添加新提醒，replace_existing=True 自动替换旧任务
-        self.scheduler.add_job(
-            func=self._send_reminder,
-            trigger=DateTrigger(run_date=remind_time),
+        # 先取消同 ID 任务，确保在原生调度器下也不会重复注册
+        await self.scheduler_adapter.cancel(job_id)
+
+        await self.scheduler_adapter.schedule_once(
+            job_id=job_id,
+            run_date=remind_time,
+            callback=self._send_reminder,
             args=[task.id],
-            id=job_id,
-            replace_existing=True,
         )
 
         if callback:
@@ -101,8 +105,8 @@ class ReminderService:
             # 通过callback发送消息
             if task_id in self._reminder_callbacks:
                 await self._reminder_callbacks[task_id](message)
-            elif self.context:
-                await self.context.send_message(task.session_origin, message)
+            elif task.session_origin:
+                await self.scheduler_adapter.send_reminder(task.session_origin, message)
 
             logger.info(f"Reminder sent for task: {task.name}")
 
@@ -152,13 +156,10 @@ class ReminderService:
     async def cancel_reminder(self, task_id: str):
         """取消任务提醒"""
         job_id = f"reminder_{task_id}"
-        try:
-            self.scheduler.remove_job(job_id)
-        except Exception:
-            pass  # 任务不存在也无所谓，直接忽略
-        finally:
-            if task_id in self._reminder_callbacks:
-                del self._reminder_callbacks[task_id]
+        await self.scheduler_adapter.cancel(job_id)
+
+        if task_id in self._reminder_callbacks:
+            del self._reminder_callbacks[task_id]
 
     async def update_reminder(self, task: Task):
         """更新任务提醒"""
@@ -179,26 +180,24 @@ class ReminderService:
         """
         hour, minute = map(int, time_str.split(":"))
 
-        if repeat_pattern == "daily":
-            trigger = CronTrigger(hour=hour, minute=minute)
-        elif repeat_pattern == "weekly":
-            trigger = CronTrigger(hour=hour, minute=minute, day_of_week="mon-fri")
+        cron_kwargs = {"hour": hour, "minute": minute}
+        if repeat_pattern == "weekly":
+            cron_kwargs["day_of_week"] = "mon-fri"
         elif repeat_pattern == "workdays":
-            trigger = CronTrigger(hour=hour, minute=minute, day_of_week="mon-fri")
+            cron_kwargs["day_of_week"] = "mon-fri"
         elif repeat_pattern == "monthly":
-            trigger = CronTrigger(hour=hour, minute=minute, day="1-28")
-        else:
-            # 默认每天
-            trigger = CronTrigger(hour=hour, minute=minute)
+            cron_kwargs["day"] = "1-28"
 
         job_id = f"recurring_{recurring_task_id}"
 
-        self.scheduler.add_job(
-            func=self._send_recurring_reminder,
-            trigger=trigger,
+        # 先取消同 ID 任务，确保重复调用时保持幂等
+        await self.scheduler_adapter.cancel(job_id)
+
+        await self.scheduler_adapter.schedule_cron(
+            job_id=job_id,
+            cron_kwargs=cron_kwargs,
+            callback=self._send_recurring_reminder,
             args=[recurring_task_id, message],
-            id=job_id,
-            replace_existing=True,
         )
 
         logger.info(f"Scheduled recurring reminder {recurring_task_id} at {time_str}")
@@ -206,9 +205,6 @@ class ReminderService:
     async def _send_recurring_reminder(self, recurring_task_id: str, message: str):
         """发送循环任务提醒"""
         try:
-            if self.context:
-                # 注意：循环任务可能需要session_origin存储
-                pass
             logger.info(f"Recurring reminder sent: {message}")
         except Exception as e:
             logger.error(f"Error sending recurring reminder: {e}")
@@ -216,7 +212,7 @@ class ReminderService:
     def get_next_reminder_time(self, task_id: str) -> Optional[datetime]:
         """获取任务下一次提醒时间"""
         job_id = f"reminder_{task_id}"
-        job = self.scheduler.get_job(job_id)
-        if job and job.next_run_time:
-            return job.next_run_time
+        getter = getattr(self.scheduler_adapter, "get_next_run_time", None)
+        if callable(getter):
+            return getter(job_id)
         return None
