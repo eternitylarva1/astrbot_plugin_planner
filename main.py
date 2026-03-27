@@ -75,8 +75,8 @@ class PlannerPlugin(Star):
 
         # 初始化服务
         self.storage = StorageService("astrbot_plugin_planner")
-        self.task_service = TaskService(self.storage)
         self.learning_service = LearningService(self.storage)
+        self.task_service = TaskService(self.storage, self.learning_service)
         self.scheduler_adapter = AstrBotSchedulerAdapter(context)
         self.reminder_service = ReminderService(
             self.storage, self.task_service, self.scheduler_adapter
@@ -1035,6 +1035,29 @@ class PlannerPlugin(Star):
                 f"🧠 自动学习状态：{'开启' if enabled else '关闭'}\n"
                 f"可用命令：/学习 自动开启 或 /学习 自动关闭"
             )
+            return
+
+        if "重建" in user_input:
+            stats = await self.learning_service.rebuild_profile_from_events()
+            yield event.plain_result(
+                "🛠️ 已从事件流重建学习画像（默认忽略删除类事件，便于误删恢复）。\n"
+                f"📚 事件总数：{stats['events_total']}，已重放：{stats['events_replayed']}"
+            )
+            return
+
+        if "最近事件" in user_input:
+            events = await self.learning_service.get_recent_events(limit=10)
+            if not events:
+                yield event.plain_result("📭 暂无事件记录。")
+                return
+            lines = ["🧾 最近事件（最多10条）", "━━━━━━━━━━━━━━━"]
+            for idx, item in enumerate(reversed(events), 1):
+                ts = str(item.get("timestamp", ""))[:19].replace("T", " ")
+                e_type = item.get("type", "unknown")
+                payload = item.get("payload", {}) or {}
+                task_name = payload.get("task_name") or payload.get("habit_key") or "-"
+                lines.append(f"{idx}. [{ts}] {e_type} -> {task_name}")
+            yield event.plain_result("\n".join(lines))
             return
 
         if "统计" in user_input or "习惯" in user_input:

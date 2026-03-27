@@ -1,4 +1,5 @@
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 from ..models.task import LearningData, DurationStats
 from .storage_service import StorageService
 from astrbot.api import logger
@@ -61,6 +62,66 @@ class LearningService:
             "time_simple": simple_slots,
             "time_total": complex_slots + simple_slots,
         }
+
+    async def append_event(self, event: Dict[str, Any]):
+        """追加行为事件到事件流"""
+        event_type = str(event.get("type", "")).strip()
+        if not event_type:
+            return
+        payload = dict(event.get("payload", {}) or {})
+        record = {
+            "timestamp": event.get("timestamp") or datetime.now().isoformat(),
+            "type": event_type,
+            "payload": payload,
+        }
+        await self.storage.add_planning_event(record)
+
+    async def rebuild_profile_from_events(self, apply_delete_events: bool = False) -> Dict[str, int]:
+        """从事件流重建学习画像
+
+        默认忽略删除类事件，用于误删后的恢复。
+        """
+        events = await self.storage.get_planning_events()
+        current = await self._ensure_data()
+        auto_flag = 1 if self._is_auto_learning_enabled_from_data(current) else 0
+
+        rebuilt = LearningData()
+        rebuilt.remind_preferences[self._AUTO_LEARNING_KEY] = auto_flag
+        self._data = rebuilt
+
+        replayed = 0
+        for e in events:
+            event_type = str(e.get("type", "")).strip()
+            payload = dict(e.get("payload", {}) or {})
+            task_name = str(payload.get("task_name", "")).strip()
+
+            if event_type == "task_created":
+                duration = _safe_int(payload.get("duration_minutes"), 0)
+                slot = payload.get("time_slot")
+                if task_name and duration > 0:
+                    await self.record_task_creation_pattern(task_name, slot, duration)
+                    replayed += 1
+            elif event_type == "task_completed":
+                actual = _safe_int(payload.get("actual_duration_minutes"), 0)
+                if task_name and actual > 0:
+                    await self.record_duration(task_name, actual)
+                    replayed += 1
+            elif event_type == "task_rescheduled":
+                slot = payload.get("new_time_slot")
+                if task_name and slot:
+                    await self.record_time_pattern(task_name, str(slot))
+                    replayed += 1
+            elif event_type == "habit_deleted":
+                if apply_delete_events:
+                    await self.delete_habit(
+                        str(payload.get("habit_key", "")).strip(),
+                        str(payload.get("delete_type", "all")).strip() or "all",
+                        record_event=False,
+                    )
+                    replayed += 1
+
+        await self._save_data()
+        return {"events_total": len(events), "events_replayed": replayed}
 
     def _is_auto_learning_enabled_from_data(self, data: LearningData) -> bool:
         """从学习数据中读取自动学习开关（默认开启）"""
@@ -326,6 +387,18 @@ class LearningService:
         removed_payload = data.task_durations.pop(key, None)
         await self._save_data()
         after = self._summarize_data(data)
+        if removed:
+            await self.append_event(
+                {
+                    "type": "habit_deleted",
+                    "payload": {
+                        "habit_key": key,
+                        "delete_type": "duration",
+                        "removed_duration": 1,
+                        "removed_alias": 0,
+                    },
+                }
+            )
         return {
             "removed": removed,
             "key": key,
@@ -345,6 +418,18 @@ class LearningService:
         removed_payload = data.task_aliases.pop(key, None)
         await self._save_data()
         after = self._summarize_data(data)
+        if removed:
+            await self.append_event(
+                {
+                    "type": "habit_deleted",
+                    "payload": {
+                        "habit_key": key,
+                        "delete_type": "alias",
+                        "removed_duration": 0,
+                        "removed_alias": 1,
+                    },
+                }
+            )
         return {
             "removed": removed,
             "key": key,
@@ -370,6 +455,19 @@ class LearningService:
         data.time_patterns.pop(target_key, None)
         await self._save_data()
         after = self._summarize_data(data)
+        if removed:
+            await self.append_event(
+                {
+                    "type": "habit_deleted",
+                    "payload": {
+                        "habit_key": raw,
+                        "delete_type": "time",
+                        "time_key": target_key,
+                        "removed_duration": 0,
+                        "removed_alias": 0,
+                    },
+                }
+            )
         return {
             "removed": removed,
             "key": target_key,
@@ -520,6 +618,58 @@ class LearningService:
         await self._save_data()
 
         return {"ok": True, "message": "；".join(updates), "updates": updates}
+
+    async def get_recent_events(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """获取最近行为事件"""
+        events = await self.storage.get_planning_events()
+        safe_limit = max(1, min(_safe_int(limit, 10), 50))
+        return list(events)[-safe_limit:]
+
+    async def delete_habit(
+        self, habit_key: str, delete_type: str = "all", record_event: bool = True
+    ) -> Dict[str, int]:
+        """删除习惯数据（时长/别名/全部）"""
+        data = await self._ensure_data()
+        key = habit_key.strip()
+        mode = (delete_type or "all").strip().lower()
+        removed_duration = 0
+        removed_alias = 0
+        if not key:
+            return {"removed_duration": 0, "removed_alias": 0}
+
+        if mode in {"all", "duration"} and key in data.task_durations:
+            del data.task_durations[key]
+            removed_duration = 1
+
+        if mode in {"all", "alias"}:
+            if key in data.task_aliases:
+                del data.task_aliases[key]
+                removed_alias = 1
+            else:
+                matched = [a for a, c in data.task_aliases.items() if c == key]
+                for a in matched:
+                    del data.task_aliases[a]
+                    removed_alias += 1
+
+        await self._save_data()
+
+        if record_event and (removed_duration > 0 or removed_alias > 0):
+            await self.append_event(
+                {
+                    "type": "habit_deleted",
+                    "payload": {
+                        "habit_key": key,
+                        "delete_type": mode,
+                        "removed_duration": removed_duration,
+                        "removed_alias": removed_alias,
+                    },
+                }
+            )
+
+        return {
+            "removed_duration": removed_duration,
+            "removed_alias": removed_alias,
+        }
 
     async def generate_system_prompt(self) -> str:
         """生成系统提示词片段"""

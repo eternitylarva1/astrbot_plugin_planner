@@ -18,12 +18,40 @@ def _safe_int(value: Any, default: int = 0) -> int:
 class TaskService:
     """任务管理服务"""
 
-    def __init__(self, storage: StorageService):
+    def __init__(self, storage: StorageService, learning_service=None):
         self.storage = storage
+        self.learning_service = learning_service
+
+    @staticmethod
+    def _get_time_slot(dt: Optional[datetime]) -> Optional[str]:
+        if not dt:
+            return None
+        hour = dt.hour
+        if hour < 12:
+            return "morning"
+        if hour < 18:
+            return "afternoon"
+        return "evening"
 
     async def create_task(self, task: Task) -> Task:
         """创建任务"""
         await self.storage.save_task(task.to_dict())
+        if self.learning_service:
+            await self.learning_service.append_event(
+                {
+                    "type": "task_created",
+                    "payload": {
+                        "task_id": task.id,
+                        "task_name": task.name,
+                        "start_time": task.start_time.isoformat()
+                        if task.start_time
+                        else None,
+                        "duration_minutes": task.duration_minutes,
+                        "time_slot": self._get_time_slot(task.start_time),
+                        "session_origin": task.session_origin,
+                    },
+                }
+            )
         logger.info(f"Task created: {task.name} at {task.start_time}")
         return task
 
@@ -80,6 +108,25 @@ class TaskService:
         await self.storage.update_task_status(
             task_id, "done", task.completed_at.isoformat()
         )
+        if self.learning_service:
+            actual_duration = (
+                int((task.completed_at - task.start_time).total_seconds() / 60)
+                if task.start_time and task.completed_at
+                else None
+            )
+            await self.learning_service.append_event(
+                {
+                    "type": "task_completed",
+                    "payload": {
+                        "task_id": task.id,
+                        "task_name": task.name,
+                        "completed_at": task.completed_at.isoformat()
+                        if task.completed_at
+                        else None,
+                        "actual_duration_minutes": actual_duration,
+                    },
+                }
+            )
         logger.info(f"Task completed: {task.name}")
         return task
 
@@ -90,6 +137,19 @@ class TaskService:
             return None
         task.status = "cancelled"
         await self.storage.update_task_status(task_id, "cancelled")
+        if self.learning_service:
+            await self.learning_service.append_event(
+                {
+                    "type": "task_cancelled",
+                    "payload": {
+                        "task_id": task.id,
+                        "task_name": task.name,
+                        "start_time": task.start_time.isoformat()
+                        if task.start_time
+                        else None,
+                    },
+                }
+            )
         logger.info(f"Task cancelled: {task.name}")
         return task
 
@@ -106,10 +166,34 @@ class TaskService:
         task = await self.get_task(task_id)
         if not task:
             return None
+        old_start_time = task.start_time
+        old_duration = task.duration_minutes
         for key, value in updates.items():
             if hasattr(task, key):
                 setattr(task, key, value)
         await self.storage.save_task(task.to_dict())
+        if self.learning_service and (
+            ("start_time" in updates and task.start_time != old_start_time)
+            or ("duration_minutes" in updates and task.duration_minutes != old_duration)
+        ):
+            await self.learning_service.append_event(
+                {
+                    "type": "task_rescheduled",
+                    "payload": {
+                        "task_id": task.id,
+                        "task_name": task.name,
+                        "old_start_time": old_start_time.isoformat()
+                        if old_start_time
+                        else None,
+                        "new_start_time": task.start_time.isoformat()
+                        if task.start_time
+                        else None,
+                        "old_duration_minutes": old_duration,
+                        "new_duration_minutes": task.duration_minutes,
+                        "new_time_slot": self._get_time_slot(task.start_time),
+                    },
+                }
+            )
         return task
 
     async def get_next_available_slot(
