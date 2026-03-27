@@ -57,6 +57,12 @@ class TimeParser:
     def parse_duration(cls, text: str) -> Optional[int]:
         """解析时长（分钟数），无法解析时返回 None。"""
         text_lower = text.strip().lower()
+        text_lower = (
+            text_lower.replace("一个小时", "1小时")
+            .replace("一小时", "1小时")
+            .replace("一个钟头", "1小时")
+            .replace("半小时", "30分钟")
+        )
 
         # 先匹配范围时长（例如：2-3小时、2~3小时、2到3小时）
         range_match = re.search(

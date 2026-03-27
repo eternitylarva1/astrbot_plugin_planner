@@ -10,5 +10,23 @@
     "type": "int",
     "default": 10,
     "hint": "任务临近时提前提醒的分钟数"
+  },
+  "auto_plan_on_missing_time": {
+    "description": "LLM工具在缺少具体时间时是否自动规划并给出可执行时间",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，像“今天帮我安排一个小时做视频”这类输入会自动生成时间建议而不是只让用户补充"
+  },
+  "avoid_past_time": {
+    "description": "AI规划时自动避免过去时间",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，若建议时间早于当前时间，会自动顺延到未来可执行时段"
+  },
+  "ai_default_duration_minutes": {
+    "description": "AI规划默认任务时长（分钟）",
+    "type": "int",
+    "default": 45,
+    "hint": "当没有学习数据且用户未指定时长时使用"
   }
 }
