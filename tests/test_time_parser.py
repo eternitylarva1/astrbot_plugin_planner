@@ -63,6 +63,13 @@ class TestTimeParserRegression(unittest.TestCase):
         self.assertEqual(parsed["task_name"], "参加宣讲会")
         self.assertEqual(parsed["datetime"], datetime(2026, 3, 27, 18, 0))
 
+    def test_natural_planning_phrase_contains_duration(self):
+        text = "今天帮我安排一个小时做视频"
+        parsed = TimeParser.parse_task_info(text)
+        # 口语化“帮我安排”语句至少应识别出时长与核心任务
+        self.assertEqual(parsed["duration"], 60)
+        self.assertIn("做视频", parsed["task_name"])
+
 
 if __name__ == "__main__":
     unittest.main()
