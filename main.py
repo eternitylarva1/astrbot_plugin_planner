@@ -138,6 +138,19 @@ class PlannerPlugin(Star):
 
         return False
 
+    @staticmethod
+    def _format_timeout_text(timeout_seconds: int) -> str:
+        """将超时时长（秒）格式化为可读文本。"""
+        if timeout_seconds < 60:
+            return f"{timeout_seconds}秒"
+
+        minutes = timeout_seconds / 60
+        if timeout_seconds % 60 == 0:
+            return f"{int(minutes)}分钟"
+
+        minute_text = f"{minutes:.1f}".rstrip("0").rstrip(".")
+        return f"{minute_text}分钟"
+
     async def _get_session_pending_tasks(self, session_origin: str) -> List[Task]:
         """获取当前会话的待办任务。"""
         pending_tasks = await self.task_service.get_pending_tasks()
@@ -1203,7 +1216,9 @@ class PlannerPlugin(Star):
             self._PENDING_TIMEOUT_SECONDS = timeout_seconds
             self.config["timeout_seconds"] = timeout_seconds
             await self.config.save_config()
-            results.append(f"超时时间设置为 {timeout_seconds} 秒")
+            results.append(
+                f"超时时间设置为 {self._format_timeout_text(timeout_seconds)}"
+            )
 
         if remind_before is not None:
             if remind_before < 0:
@@ -1505,7 +1520,9 @@ class PlannerPlugin(Star):
         self.config["timeout_seconds"] = seconds
         await self.config.save_config()
 
-        yield event.plain_result(f"✅ 超时时间已设置为 {seconds} 秒")
+        yield event.plain_result(
+            f"✅ 超时时间已设置为 {self._format_timeout_text(seconds)}"
+        )
 
     # ========== 事件监听器 - 处理多轮对话 ==========
 
@@ -1535,7 +1552,7 @@ class PlannerPlugin(Star):
             if elapsed > self._PENDING_TIMEOUT_SECONDS:
                 del self._pending_tasks[session_id]
                 yield event.plain_result(
-                    "⏰ 抱歉，上次的问题已超时（超过2分钟），已自动取消。\n"
+                    f"⏰ 抱歉，上次的问题已超时（超过{self._format_timeout_text(self._PENDING_TIMEOUT_SECONDS)}），已自动取消。\n"
                     "如需继续，请重新发送任务指令。"
                 )
                 event.stop_event()
