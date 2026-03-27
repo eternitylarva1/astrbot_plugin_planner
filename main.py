@@ -96,8 +96,24 @@ class PlannerPlugin(Star):
             str, Dict
         ] = {}  # session_id -> 等待确认的任务（带 pending_at 时间戳）
         self._goal_states: Dict[str, GoalState] = {}  # session_id -> 目标状态
+        self._runtime_init_done = False
+        self._runtime_init_lock = asyncio.Lock()
 
         logger.info("计划助手插件已加载")
+
+    async def _ensure_runtime_initialized(self):
+        """首次运行前补齐学习系统默认提醒值，避免仅存在内存配置。"""
+        if self._runtime_init_done:
+            return
+
+        async with self._runtime_init_lock:
+            if self._runtime_init_done:
+                return
+
+            await self.learning_service.ensure_default_remind_preference(
+                self._default_remind_before
+            )
+            self._runtime_init_done = True
 
     @staticmethod
     def _filter_tasks_by_session(tasks: List[Task], session_origin: str) -> List[Task]:
@@ -121,6 +137,19 @@ class PlannerPlugin(Star):
             return True
 
         return False
+
+    @staticmethod
+    def _format_timeout_text(timeout_seconds: int) -> str:
+        """将超时时长（秒）格式化为可读文本。"""
+        if timeout_seconds < 60:
+            return f"{timeout_seconds}秒"
+
+        minutes = timeout_seconds / 60
+        if timeout_seconds % 60 == 0:
+            return f"{int(minutes)}分钟"
+
+        minute_text = f"{minutes:.1f}".rstrip("0").rstrip(".")
+        return f"{minute_text}分钟"
 
     async def _get_session_pending_tasks(self, session_origin: str) -> List[Task]:
         """获取当前会话的待办任务。"""
@@ -172,6 +201,7 @@ class PlannerPlugin(Star):
         - ok=True 且 task 不为空: 可直接创建
         - ok=False: 已检测到冲突，message 为给用户的提示文案
         """
+        await self._ensure_runtime_initialized()
         conflicts = await self.task_service.check_conflict(task_time, duration)
         if not conflicts:
             task = Task(
@@ -181,7 +211,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),
@@ -1186,7 +1216,9 @@ class PlannerPlugin(Star):
             self._PENDING_TIMEOUT_SECONDS = timeout_seconds
             self.config["timeout_seconds"] = timeout_seconds
             await self.config.save_config()
-            results.append(f"超时时间设置为 {timeout_seconds} 秒")
+            results.append(
+                f"超时时间设置为 {self._format_timeout_text(timeout_seconds)}"
+            )
 
         if remind_before is not None:
             if remind_before < 0:
@@ -1194,6 +1226,7 @@ class PlannerPlugin(Star):
             self._default_remind_before = remind_before
             self.config["remind_before"] = remind_before
             await self.config.save_config()
+            await self.learning_service.record_remind_preference(None, remind_before)
             results.append(f"提前 {remind_before} 分钟提醒")
 
         if auto_plan_on_missing_time is not None:
@@ -1487,7 +1520,9 @@ class PlannerPlugin(Star):
         self.config["timeout_seconds"] = seconds
         await self.config.save_config()
 
-        yield event.plain_result(f"✅ 超时时间已设置为 {seconds} 秒")
+        yield event.plain_result(
+            f"✅ 超时时间已设置为 {self._format_timeout_text(seconds)}"
+        )
 
     # ========== 事件监听器 - 处理多轮对话 ==========
 
@@ -1517,7 +1552,7 @@ class PlannerPlugin(Star):
             if elapsed > self._PENDING_TIMEOUT_SECONDS:
                 del self._pending_tasks[session_id]
                 yield event.plain_result(
-                    "⏰ 抱歉，上次的问题已超时（超过2分钟），已自动取消。\n"
+                    f"⏰ 抱歉，上次的问题已超时（超过{self._format_timeout_text(self._PENDING_TIMEOUT_SECONDS)}），已自动取消。\n"
                     "如需继续，请重新发送任务指令。"
                 )
                 event.stop_event()
@@ -1682,7 +1717,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),

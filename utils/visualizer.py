@@ -224,8 +224,8 @@ class Visualizer:
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-            background: linear-gradient(180deg, #667eea 0%, #5f7fe0 42%, #764ba2 100%);
-            padding: 18px 0;
+            background: #f3f4f6;
+            padding: 10px 0;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -233,12 +233,12 @@ class Visualizer:
         }}
         .container {{
             background: #ffffff;
-            border-radius: 30px;
-            padding: 34px 28px 26px;
-            box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
-            width: min(92vw, 560px);
-            min-height: min(94vh, 1120px);
-            aspect-ratio: 1 / 1.92;
+            border-radius: 24px;
+            padding: 24px 24px 18px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+            width: min(96vw, 900px);
+            min-height: min(96vh, 1680px);
+            aspect-ratio: 1 / 2;
             margin: 0 auto;
             color: #1f2937;
             display: flex;
@@ -248,12 +248,12 @@ class Visualizer:
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 28px;
-            padding-bottom: 18px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
             border-bottom: 2px solid #f0f0f0;
         }}
         .title {{
-            font-size: 38px;
+            font-size: 46px;
             font-weight: 700;
             color: #111827;
             display: flex;
@@ -263,33 +263,34 @@ class Visualizer:
         .date-badge {{
             background: #eef2ff;
             color: #3730a3;
-            padding: 8px 16px;
+            padding: 8px 18px;
             border-radius: 24px;
-            font-size: 18px;
+            font-size: 22px;
             font-weight: 700;
         }}
         .tasks-container {{
-            min-height: 620px;
+            min-height: 0;
             flex: 1;
+            padding-top: 4px;
         }}
         .timeline-item {{
             display: flex;
             align-items: stretch;
             gap: 14px;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
             position: relative;
         }}
         .timeline-time {{
-            width: 74px;
+            width: 98px;
             text-align: right;
-            font-size: 20px;
+            font-size: 24px;
             color: #374151;
             font-weight: 700;
             padding-top: 4px;
         }}
         .timeline-time-end {{
             margin-top: 4px;
-            font-size: 14px;
+            font-size: 18px;
             color: #999;
         }}
         .timeline-dot {{
@@ -316,7 +317,7 @@ class Visualizer:
         }}
         .timeline-card {{
             flex: 1;
-            padding: 16px 18px;
+            padding: 18px 20px;
             border-radius: 14px;
         }}
         .task-content {{
@@ -325,24 +326,24 @@ class Visualizer:
             gap: 12px;
         }}
         .task-emoji {{
-            font-size: 24px;
+            font-size: 30px;
         }}
         .task-name {{
-            font-size: 24px;
+            font-size: 32px;
             color: #111827;
             font-weight: 700;
             flex: 1;
         }}
         .task-duration {{
-            font-size: 16px;
+            font-size: 20px;
             color: #374151;
             background: rgba(0,0,0,0.05);
-            padding: 6px 12px;
+            padding: 7px 14px;
             border-radius: 12px;
             font-weight: 700;
         }}
         .task-status {{
-            font-size: 20px;
+            font-size: 26px;
         }}
         .daily-card {{
             border-radius: 14px;
@@ -392,19 +393,19 @@ class Visualizer:
             text-align: center;
             color: #999;
             padding: 80px 40px;
-            font-size: 22px;
+            font-size: 30px;
         }}
         .stats {{
-            margin-top: 28px;
-            padding-top: 22px;
+            margin-top: 14px;
+            padding-top: 14px;
             border-top: 2px solid #f0f0f0;
         }}
         .progress-bar {{
-            height: 12px;
+            height: 16px;
             background: #f0f0f0;
             border-radius: 8px;
             overflow: hidden;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }}
         .progress-fill {{
             height: 100%;
@@ -423,27 +424,27 @@ class Visualizer:
             gap: 8px;
         }}
         .stats-label {{
-            font-size: 20px;
+            font-size: 24px;
             color: #4b5563;
             font-weight: 700;
         }}
         .stats-value {{
-            font-size: 28px;
+            font-size: 34px;
             font-weight: 600;
             color: #111827;
         }}
         .free-hint {{
-            background: linear-gradient(135deg, #667eea, #764ba2);
+            background: linear-gradient(135deg, #4f46e5, #9333ea);
             color: white;
-            padding: 12px 20px;
+            padding: 14px 22px;
             border-radius: 22px;
-            font-size: 20px;
+            font-size: 24px;
             font-weight: 700;
         }}
         .footer {{
-            margin-top: 20px;
+            margin-top: 10px;
             text-align: center;
-            font-size: 14px;
+            font-size: 18px;
             color: #b5b8c2;
         }}
         @media (max-width: 768px) {{
