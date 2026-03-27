@@ -30,6 +30,7 @@ class LearningService:
     def __init__(self, storage: StorageService):
         self.storage = storage
         self._data: Optional[LearningData] = None
+        self._AUTO_LEARNING_KEY = "__auto_learning__"
 
     async def _ensure_data(self) -> LearningData:
         """确保学习数据已加载"""
@@ -46,9 +47,27 @@ class LearningService:
         if self._data:
             await self.storage.save_learning_data(self._data.to_dict())
 
+    def _is_auto_learning_enabled_from_data(self, data: LearningData) -> bool:
+        """从学习数据中读取自动学习开关（默认开启）"""
+        raw = data.remind_preferences.get(self._AUTO_LEARNING_KEY, 1)
+        return _safe_int(raw, 1) == 1
+
+    async def is_auto_learning_enabled(self) -> bool:
+        """自动学习是否开启"""
+        data = await self._ensure_data()
+        return self._is_auto_learning_enabled_from_data(data)
+
+    async def set_auto_learning_enabled(self, enabled: bool):
+        """设置自动学习开关"""
+        data = await self._ensure_data()
+        data.remind_preferences[self._AUTO_LEARNING_KEY] = 1 if enabled else 0
+        await self._save_data()
+
     async def record_duration(self, task_name: str, duration_minutes: int):
         """记录任务实际完成时长"""
         data = await self._ensure_data()
+        if not self._is_auto_learning_enabled_from_data(data):
+            return
         normalized_name = task_name.strip()
         duration = _safe_int(duration_minutes)
 
@@ -81,6 +100,8 @@ class LearningService:
     ):
         """记录用户指定的任务时长"""
         data = await self._ensure_data()
+        if not self._is_auto_learning_enabled_from_data(data):
+            return
         normalized_name = task_name.strip()
         duration = _safe_int(duration_minutes)
 
@@ -147,6 +168,8 @@ class LearningService:
     async def record_time_pattern(self, task_name: str, time_slot: str):
         """记录时间段偏好"""
         data = await self._ensure_data()
+        if not self._is_auto_learning_enabled_from_data(data):
+            return
         complex_keywords = ["写代码", "写报告", "写文档", "项目", "学习", "复习"]
         is_complex = any(k in task_name for k in complex_keywords)
         pattern_key = "complex" if is_complex else "simple"
@@ -158,6 +181,64 @@ class LearningService:
 
         await self._save_data()
         logger.info(f"Learned time pattern: {pattern_key} tasks prefer {time_slot}")
+
+    async def record_task_creation_pattern(
+        self, task_name: str, time_slot: Optional[str], duration_minutes: int
+    ):
+        """在任务创建时自动学习用户习惯（时长 + 时间段 + 别名）"""
+        data = await self._ensure_data()
+        if not self._is_auto_learning_enabled_from_data(data):
+            return
+
+        clean_name = task_name.strip()
+        await self.record_user_specified_duration(clean_name, duration_minutes)
+        if time_slot:
+            await self.record_time_pattern(clean_name, time_slot)
+
+        # 自动学习别名：将长句简化到短词，避免同义任务分散
+        canonical = clean_name
+        alias = clean_name
+        for sep in ["，", "。", "；", ";", "并且", "然后", "再", "接着"]:
+            if sep in canonical:
+                canonical = canonical.split(sep)[0].strip()
+        for prefix in ["安排", "计划", "准备", "需要", "想要", "想", "我要"]:
+            if canonical.startswith(prefix):
+                canonical = canonical[len(prefix) :].strip()
+        if canonical and alias and canonical != alias and len(canonical) >= 2:
+            await self.learn_alias(alias, canonical)
+
+    async def suggest_duration_minutes(
+        self, task_name: str, fallback_minutes: int = 45
+    ) -> int:
+        """给任务推荐时长"""
+        learned = await self.get_default_duration(task_name)
+        if learned:
+            return learned
+
+        complex_keywords = ["项目", "复习", "学习", "写代码", "写文档", "训练", "整理"]
+        if any(k in task_name for k in complex_keywords):
+            return 90
+        return _safe_int(fallback_minutes, 45)
+
+    async def suggest_time_slot(self, task_name: str) -> str:
+        """给任务推荐时间段（如 morning/afternoon/evening）"""
+        text = task_name.lower()
+        if any(k in text for k in ["早上", "上午", "晨"]):
+            return "morning"
+        if any(k in text for k in ["下午", "午后"]):
+            return "afternoon"
+        if any(k in text for k in ["晚上", "夜", "晚"]):
+            return "evening"
+
+        patterns = await self.get_time_preference()
+        complex_keywords = ["项目", "复习", "学习", "写代码", "写文档", "训练", "整理"]
+        key = "complex" if any(k in task_name for k in complex_keywords) else "simple"
+        preferred = patterns.get(key) or []
+        if preferred:
+            slot = preferred[0]
+            if slot in {"morning", "afternoon", "evening"}:
+                return slot
+        return "evening" if key == "complex" else "morning"
 
     async def get_time_preference(self) -> Dict[str, List[str]]:
         """获取时间段偏好"""
