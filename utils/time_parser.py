@@ -158,9 +158,36 @@ class TimeParser:
         hour: Optional[int] = None
         minute = 0
 
+        # 中午 + X点/X:XX（优先于通用 HH:MM，避免被提前匹配为凌晨/上午时刻）
+        if hour is None and "中午" in time_text:
+            hour = 12
+            minute = 0
+            m = re.search(
+                r"中午(?:\s*(\d{1,2})(?:\s*[点时](?:(\d{1,2})\s*分?)?|:(\d{2}))?)?",
+                time_text,
+            )
+            if m and m.group(1):
+                h = int(m.group(1))
+                if 0 <= h <= 23:
+                    if h == 12:
+                        hour = 12
+                    elif h < 12:
+                        hour = h + 12
+                    else:
+                        hour = h
+
+                if m.group(2):
+                    mn = int(m.group(2))
+                    if 0 <= mn <= 59:
+                        minute = mn
+                elif m.group(3):
+                    mn = int(m.group(3))
+                    if 0 <= mn <= 59:
+                        minute = mn
+
         # HH:MM
         m = re.search(r"(\d{1,2}):(\d{2})", time_text)
-        if m:
+        if hour is None and m:
             h = int(m.group(1))
             mn = int(m.group(2))
             if 0 <= h <= 23 and 0 <= mn <= 59:
@@ -197,16 +224,6 @@ class TimeParser:
                 if 0 <= h <= 23:
                     hour = h if h >= 12 else h + 12
                     minute = mn
-
-        # 中午 + X点
-        if hour is None and "中午" in time_text:
-            m = re.search(r"中午\s*(\d{1,2})?(?::(\d{2}))?", time_text)
-            hour = 12
-            if m:
-                if m.group(1):
-                    minute = int(m.group(1))
-                if m.group(2):
-                    minute = int(m.group(2))
 
         # 凌晨 + X点
         if hour is None:
