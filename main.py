@@ -20,6 +20,7 @@ from astrbot.core.utils.session_waiter import session_waiter, SessionController
 from .services.storage_service import StorageService
 from .services.task_service import TaskService
 from .services.reminder_service import ReminderService
+from .services.astrbot_scheduler_adapter import AstrBotSchedulerAdapter
 from .services.learning_service import LearningService
 from .models.task import Task, GoalState, GoalTask
 from .utils.time_parser import TimeParser
@@ -75,8 +76,9 @@ class PlannerPlugin(Star):
         self.storage = StorageService("astrbot_plugin_planner")
         self.task_service = TaskService(self.storage)
         self.learning_service = LearningService(self.storage)
+        self.scheduler_adapter = AstrBotSchedulerAdapter(context)
         self.reminder_service = ReminderService(
-            self.storage, self.task_service, context
+            self.storage, self.task_service, self.scheduler_adapter
         )
         self.visualizer = Visualizer()
 
