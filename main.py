@@ -96,8 +96,24 @@ class PlannerPlugin(Star):
             str, Dict
         ] = {}  # session_id -> 等待确认的任务（带 pending_at 时间戳）
         self._goal_states: Dict[str, GoalState] = {}  # session_id -> 目标状态
+        self._runtime_init_done = False
+        self._runtime_init_lock = asyncio.Lock()
 
         logger.info("计划助手插件已加载")
+
+    async def _ensure_runtime_initialized(self):
+        """首次运行前补齐学习系统默认提醒值，避免仅存在内存配置。"""
+        if self._runtime_init_done:
+            return
+
+        async with self._runtime_init_lock:
+            if self._runtime_init_done:
+                return
+
+            await self.learning_service.ensure_default_remind_preference(
+                self._default_remind_before
+            )
+            self._runtime_init_done = True
 
     @staticmethod
     def _filter_tasks_by_session(tasks: List[Task], session_origin: str) -> List[Task]:
@@ -172,6 +188,7 @@ class PlannerPlugin(Star):
         - ok=True 且 task 不为空: 可直接创建
         - ok=False: 已检测到冲突，message 为给用户的提示文案
         """
+        await self._ensure_runtime_initialized()
         conflicts = await self.task_service.check_conflict(task_time, duration)
         if not conflicts:
             task = Task(
@@ -181,7 +198,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),
@@ -1194,6 +1211,7 @@ class PlannerPlugin(Star):
             self._default_remind_before = remind_before
             self.config["remind_before"] = remind_before
             await self.config.save_config()
+            await self.learning_service.record_remind_preference(None, remind_before)
             results.append(f"提前 {remind_before} 分钟提醒")
 
         if auto_plan_on_missing_time is not None:
@@ -1682,7 +1700,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),
