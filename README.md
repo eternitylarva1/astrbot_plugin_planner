@@ -9,18 +9,22 @@
 - 支持“现在/立刻/马上”等即时时间表达
 - 支持提醒时间配置（默认提前 10 分钟）
 - 提供 LLM Tool：`create_planner_task`、`list_planner_tasks`、`complete_planner_task`、`cancel_planner_task`、`set_planner_config`
+- 新增 AI 规划：支持在“目标模糊、没想好什么时候做”的情况下自动拆解并建议时间（`/ai规划`、`plan_with_ai`）
 - 会话隔离：仅查看/操作当前会话创建的任务，避免跨会话误操作
+- 学习系统支持自动开关：`/学习 自动开启`、`/学习 自动关闭`
 
 ## 使用方式
 
 ### 1) 命令模式（推荐）
 
 - `/计划 <描述>`：交互式创建任务
+- `/ai规划 <模糊目标>`：让 AI 先给出可执行安排建议（不直接创建）
 - `/图表 [今天/明天/本周/下周]`：主动查看可视化日程图（默认时间轴）
 - `/图表 卡片 本周`：卡片样式
 - `/图表 紧凑 今天`：紧凑列表样式
 - 示例：`/计划 制作作品集`
 - 示例：`/计划 今天下午3点写代码2小时`
+- 示例：`/ai规划 这周把作品集和算法复习安排一下`
 - 示例：`/图表 本周`
 
 ### 2) LLM Tool 模式
@@ -30,6 +34,7 @@
 - `complete_planner_task(target)`：完成任务（target 可为编号或名称关键字，留空默认完成最近项）
 - `cancel_planner_task(target)`：取消任务（target 可为编号、名称关键字、`all`）
 - `set_planner_config(timeout_seconds, remind_before)`：调整超时与提醒配置
+- `plan_with_ai(intention, horizon="本周", max_tasks=5, auto_create=false)`：在信息不完整时让 AI 自动规划（可选直接创建）
 
 ## 配置项
 
