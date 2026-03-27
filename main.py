@@ -320,13 +320,12 @@ class PlannerPlugin(Star):
 
         if not user_input:
             yield event.plain_result(
-                "📝 创建任务\n"
-                "━━━━━━━━━━━━━━━\n"
-                "请告诉我你要安排什么任务~\n\n"
+                "❗参数缺失\n"
+                "用法：/计划 <任务描述>\n"
                 "示例：\n"
                 "• /计划 明天下午写代码 2小时\n"
-                "• /计划 明天9点开会\n"
-                "• /计划 每天早上运动"
+                "• /计划 明天9点开会 1小时\n"
+                "• /计划 今天晚上复习 45分钟"
             )
             return
 
@@ -542,7 +541,14 @@ class PlannerPlugin(Star):
         user_input = _strip_cmd(event.message_str, "取消", "删除任务", "remove")
 
         if not user_input:
-            yield event.plain_result("请指定要取消的任务编号、名称，或输入 -1 取消所有")
+            yield event.plain_result(
+                "❗参数缺失\n"
+                "用法：/取消 <任务编号|任务名称|-1>\n"
+                "示例：\n"
+                "• /取消 1\n"
+                "• /取消 写代码\n"
+                "• /取消 -1"
+            )
             return
 
         # -1 或 all → 取消所有待办
@@ -631,8 +637,8 @@ class PlannerPlugin(Star):
 
         if not user_input:
             yield event.plain_result(
-                "🔁 创建循环任务\n"
-                "━━━━━━━━━━━━━━━\n"
+                "❗参数缺失\n"
+                "用法：/循环 <任务描述>\n"
                 "示例：\n"
                 "• /循环 每天早上8点运动\n"
                 "• /循环 每周一早上9点开会\n"
@@ -761,12 +767,10 @@ class PlannerPlugin(Star):
         user_input = _strip_cmd(event.message_str, "设置提醒", "提醒设置")
 
         if not user_input:
-            current = await self.learning_service.get_remind_preference()
             yield event.plain_result(
-                f"⏰ 当前提醒设置\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"默认提前 {current} 分钟提醒\n\n"
-                f"修改示例：/设置提醒 15分钟"
+                "❗参数缺失\n"
+                "用法：/设置提醒 <时长>\n"
+                "示例：/设置提醒 15分钟"
             )
             return
 
@@ -784,7 +788,7 @@ class PlannerPlugin(Star):
 
     # ========== 帮助 ==========
 
-    @filter.command("帮助", alias={"help", "说明"})
+    @filter.command("规划帮助", alias={"计划帮助", "planner_help", "使用说明"})
     async def help_command(self, event: AstrMessageEvent) -> MessageEventResult:
         """显示帮助信息"""
         yield event.plain_result(
@@ -1075,10 +1079,9 @@ class PlannerPlugin(Star):
 
         if not user_input:
             yield event.plain_result(
-                f"⏰ 当前超时设置\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"超时时间：{self._PENDING_TIMEOUT_SECONDS} 秒\n\n"
-                f"修改示例：/设置超时 120"
+                "❗参数缺失\n"
+                "用法：/设置超时 <秒数>\n"
+                "示例：/设置超时 120"
             )
             return
 
