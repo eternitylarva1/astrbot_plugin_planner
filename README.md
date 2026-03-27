@@ -8,7 +8,7 @@
 - 交互式补全：缺时间/缺时长时继续询问
 - 支持“现在/立刻/马上”等即时时间表达
 - 支持提醒时间配置（默认提前 10 分钟）
-- 提供 LLM Tool：`create_planner_task`、`list_planner_tasks`、`complete_planner_task`、`cancel_planner_task`、`set_planner_config`
+- 提供 LLM Tool：`create_planner_task`、`plan_with_ai`、`auto_plan_task`、`list_planner_tasks`、`complete_planner_task`、`cancel_planner_task`、`set_planner_config`
 - 新增 AI 规划：支持在“目标模糊、没想好什么时候做”的情况下自动拆解并建议时间（`/ai规划`、`plan_with_ai`）
 - 会话隔离：仅查看/操作当前会话创建的任务，避免跨会话误操作
 - 学习系统支持自动开关：`/学习 自动开启`、`/学习 自动关闭`
@@ -34,6 +34,7 @@
 - `complete_planner_task(target)`：完成任务（target 可为编号或名称关键字，留空默认完成最近项）
 - `cancel_planner_task(target)`：取消任务（target 可为编号、名称关键字、`all`）
 - `set_planner_config(timeout_seconds, remind_before)`：调整超时与提醒配置
+- `auto_plan_task(user_text, auto_create=true)`：针对“帮我安排一下…”一类口语化需求的高优先级规划工具
 - `plan_with_ai(intention, horizon="本周", max_tasks=5, auto_create=false)`：在信息不完整时让 AI 自动规划（可选直接创建）
 
 ## 配置项
@@ -42,6 +43,9 @@
 
 - `timeout_seconds`：创建任务时等待用户补全信息的超时时间（秒）
 - `remind_before`：任务开始前多少分钟提醒
+- `auto_plan_on_missing_time`：LLM工具缺少具体时间时是否自动补全可执行时间
+- `avoid_past_time`：AI 规划结果是否自动避开过去时间
+- `ai_default_duration_minutes`：AI 规划默认时长（分钟）
 
 ## 兼容性
 
@@ -64,3 +68,7 @@
 ## 仓库
 
 - https://github.com/eternitylarva1/astrbot_plugin_planner
+
+## AI 规范文档
+
+- 面向后续 AI/开发者的工具调用规范与需求记录：`AI_PROJECT_SPEC.md`

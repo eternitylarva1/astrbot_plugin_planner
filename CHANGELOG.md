@@ -2,6 +2,29 @@
 
 本文档记录 `astrbot_plugin_planner` 的功能更新。
 
+## [1.1.2] - 2026-03-27
+
+### Added
+- 新增 `planner_tool_contract` LLM 工具，返回“工具选型 + 参数规范”说明，帮助 LLM 稳定填参。
+- 新增 `AI_PROJECT_SPEC.md`，沉淀用户需求与 AI 工具调用项目规范，便于后续其他 AI 接手。
+
+### Changed
+- 强化 `create_planner_task` 的参数错误反馈：缺少 `task_name/task_time/duration_minutes` 时返回结构化调用模板。
+- 强化 `plan_with_ai` 文档中的工具选型规则，明确何时调用规划工具、何时直接创建任务。
+
+## [1.1.1] - 2026-03-27
+
+### Added
+- 新增 `auto_plan_task` LLM 工具，专门承接“帮我安排/规划一下”这类口语化请求，默认支持直接创建任务。
+- 新增 3 项可配置能力：`auto_plan_on_missing_time`、`avoid_past_time`、`ai_default_duration_minutes`。
+
+### Changed
+- 优化 `create_planner_task`：当缺少具体时间且配置允许时，自动调用 AI 规划逻辑补全可执行时间，不再只让用户补充。
+- 优化 AI 规划语义清理，减少“这周安排一下…”等包装语进入任务名。
+
+### Fixed
+- 修复 `/ai规划` 可能返回过去时间的问题：开启 `avoid_past_time` 后自动顺延到未来时段。
+
 ## [1.1.0] - 2026-03-27
 
 ### Added

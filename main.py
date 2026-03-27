@@ -54,8 +54,8 @@ def _strip_cmd(text: str, *aliases: str) -> str:
 
 📌 使用方式：
   1. /计划 命令：交互式创建，会询问缺少的时间/时长
-  2. create_planner_task 工具：一次性提供完整信息，直接创建
-  3. plan_with_ai 工具：只给模糊目标也可先自动规划（可选直接创建）
+  2. create_planner_task 工具：一次性提供完整信息，直接创建（缺时间可自动补全）
+  3. plan_with_ai / auto_plan_task：模糊目标自动规划（可选直接创建）
   4. list/complete/cancel_planner_task：自然语言查看/完成/取消任务
 
 📌 示例：
@@ -64,7 +64,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • create_planner_task("明天上午9点开会1小时")
   • list_planner_tasks("本周")
 """,
-    "1.1.0",
+    "1.1.2",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
@@ -87,6 +87,9 @@ class PlannerPlugin(Star):
         self.config = config
         self._PENDING_TIMEOUT_SECONDS = config.get("timeout_seconds", 120)
         self._default_remind_before = config.get("remind_before", 10)
+        self._auto_plan_on_missing_time = config.get("auto_plan_on_missing_time", True)
+        self._avoid_past_time = config.get("avoid_past_time", True)
+        self._ai_default_duration_minutes = config.get("ai_default_duration_minutes", 45)
 
         # 状态管理
         self._pending_tasks: Dict[
@@ -259,12 +262,49 @@ class PlannerPlugin(Star):
         return cleaned or [intention.strip()]
 
     @staticmethod
+    def _cleanup_planning_phrase(text: str) -> str:
+        """清理“帮我安排一下这周...”等包装语，只保留核心任务语义。"""
+        cleaned = (text or "").strip()
+        for marker in [
+            "这周",
+            "本周",
+            "下周",
+            "今天",
+            "明天",
+            "后天",
+            "帮我",
+            "请",
+            "安排一下",
+            "安排",
+            "规划一下",
+            "规划",
+            "计划一下",
+            "计划",
+        ]:
+            cleaned = cleaned.replace(marker, " ")
+        return re.sub(r"\s+", " ", cleaned).strip()
+
+    @staticmethod
     def _slot_to_time(slot: str) -> dt_time:
         if slot == "morning":
             return dt_time(hour=9, minute=0)
         if slot == "afternoon":
             return dt_time(hour=15, minute=0)
         return dt_time(hour=20, minute=0)
+
+    @staticmethod
+    def _llm_create_task_param_guide() -> str:
+        """给 LLM 的 create_planner_task 参数规范。"""
+        return (
+            "请使用结构化参数重新调用 create_planner_task：\n"
+            "{\n"
+            '  "task_name": "任务名称(必填)",\n'
+            '  "task_time": "明确时间(建议 YYYY-MM-DD HH:MM 或 自然语言时间短语)",\n'
+            '  "duration_minutes": 任务时长分钟数(推荐),\n'
+            '  "repeat": "daily|weekly|monthly|workdays(可选)"\n'
+            "}\n"
+            "规则：优先传 duration_minutes；不要把整段闲聊放进 task_name。"
+        )
 
     async def _plan_by_intention(
         self, event: AstrMessageEvent, intention: str, horizon_days: int = 7, max_tasks: int = 5
@@ -275,20 +315,38 @@ class PlannerPlugin(Star):
             return []
 
         today = date.today()
+        now_dt = datetime.now()
         suggestions: List[Dict[str, Any]] = []
         for idx, name in enumerate(names):
-            duration = await self.learning_service.suggest_duration_minutes(name)
+            cleaned_name = self._cleanup_planning_phrase(name) or name
+            parsed = TimeParser.parse_task_info(name)
+            parsed_name = parsed.get("task_name") or cleaned_name
+            duration = parsed.get("duration")
+            if not duration:
+                duration = await self.learning_service.suggest_duration_minutes(
+                    parsed_name, self._ai_default_duration_minutes
+                )
             slot = await self.learning_service.suggest_time_slot(name)
             target_day = today + timedelta(days=min(idx, max(horizon_days - 1, 0)))
-            base_time = datetime.combine(target_day, self._slot_to_time(slot))
+            base_time = parsed.get("datetime") or datetime.combine(
+                target_day, self._slot_to_time(slot)
+            )
+            if self._avoid_past_time and base_time <= now_dt:
+                base_time = datetime.combine(
+                    target_day + timedelta(days=1), self._slot_to_time(slot)
+                )
             conflicts = await self.task_service.check_conflict(base_time, duration)
             if conflicts:
                 base_time = await self.task_service.get_next_available_slot(
                     target_day, duration
                 )
+                if self._avoid_past_time and base_time <= now_dt:
+                    base_time = await self.task_service.get_next_available_slot(
+                        target_day + timedelta(days=1), duration
+                    )
             suggestions.append(
                 {
-                    "task_name": name,
+                    "task_name": parsed_name,
                     "start_time": base_time,
                     "duration": duration,
                     "slot": slot,
@@ -954,11 +1012,11 @@ class PlannerPlugin(Star):
         duration_minutes: Optional[int] = None,
         repeat: Optional[str] = None,
     ) -> str:
-        """创建计划任务。
+        """创建计划任务（强烈建议 LLM 使用结构化参数）。
 
         当用户想要安排一个任务时调用此工具，一次性完成创建。
-        推荐优先使用结构化参数：task_name / task_time / duration_minutes（或 duration）。
-        也支持仅传 description 让插件自行解析。
+        ✅ 最佳实践：优先使用结构化参数 task_name / task_time / duration_minutes。
+        ⚠️ description 仅作为兜底，不建议依赖长文本解析。
 
         支持的时间表达：今天、明天、下周三、下午3点、15:30、现在、立刻 等。
         支持的时长表达：2小时、30分钟、1小时 等。
@@ -976,6 +1034,18 @@ class PlannerPlugin(Star):
             repeat(string): 可选。循环类型，如 daily/weekly/monthly/workdays。
         """
         user_input = (description or "").strip()
+        structured_mode = any(
+            [
+                (task_name or "").strip(),
+                (task_time or "").strip(),
+                duration_minutes is not None,
+                (duration or "").strip(),
+            ]
+        )
+
+        if not structured_mode and not user_input:
+            return "参数为空。\n" + self._llm_create_task_param_guide()
+
         parsed = TimeParser.parse_task_info(user_input) if user_input else {
             "task_name": "",
             "datetime": None,
@@ -996,7 +1066,7 @@ class PlannerPlugin(Star):
 
         # 没有解析出任务名 → 询问
         if not merged_task_name:
-            return "请告诉我任务名称是什么？"
+            return "缺少 task_name。\n" + self._llm_create_task_param_guide()
 
         # 清理任务名中的模糊词
         merged_task_name = re.sub(
@@ -1023,6 +1093,8 @@ class PlannerPlugin(Star):
                     f"例如：45分钟、1小时\n\n"
                     f"请补充完整后再次调用此工具，或使用 /计划 命令进行交互式创建。"
                 )
+            if structured_mode:
+                return "缺少时长参数（duration_minutes）。\n" + self._llm_create_task_param_guide()
             return (
                 f"📝 任务「{merged_task_name}」\n\n"
                 f"请告诉我预计需要多长时间？\n"
@@ -1031,6 +1103,20 @@ class PlannerPlugin(Star):
             )
 
         # 缺少时间 → 提示用户
+        if not merged_task_time:
+            if self._auto_plan_on_missing_time:
+                suggestions = await self._plan_by_intention(
+                    event, merged_task_name, horizon_days=1, max_tasks=1
+                )
+                if suggestions:
+                    one = suggestions[0]
+                    merged_task_time = one["start_time"]
+                    if not merged_duration:
+                        merged_duration = one["duration"]
+                else:
+                    return "我暂时无法自动安排时间，请补充 task_time。\n" + self._llm_create_task_param_guide()
+            else:
+                return "缺少 task_time。\n" + self._llm_create_task_param_guide()
         if not merged_task_time:
             return (
                 f"📝 任务「{merged_task_name}」\n"
@@ -1077,12 +1163,18 @@ class PlannerPlugin(Star):
         event: AstrMessageEvent,
         timeout_seconds: Optional[int] = None,
         remind_before: Optional[int] = None,
+        auto_plan_on_missing_time: Optional[bool] = None,
+        avoid_past_time: Optional[bool] = None,
+        ai_default_duration_minutes: Optional[int] = None,
     ) -> str:
-        """设置计划助手的配置参数。
+        """设置计划助手的配置参数（建议 LLM 一次只改一到两个参数）。
 
         Args:
             timeout_seconds(int): 超时时间，单位为秒。建议范围 60-600 秒（1-10分钟）。
             remind_before(int): 任务开始前多少分钟提醒。
+            auto_plan_on_missing_time(bool): 缺少时间时是否自动规划时间。
+            avoid_past_time(bool): AI规划是否自动避免过去时间。
+            ai_default_duration_minutes(int): AI默认任务时长（分钟）。
         """
         results = []
 
@@ -1103,6 +1195,30 @@ class PlannerPlugin(Star):
             self.config["remind_before"] = remind_before
             await self.config.save_config()
             results.append(f"提前 {remind_before} 分钟提醒")
+
+        if auto_plan_on_missing_time is not None:
+            self._auto_plan_on_missing_time = bool(auto_plan_on_missing_time)
+            self.config["auto_plan_on_missing_time"] = self._auto_plan_on_missing_time
+            await self.config.save_config()
+            results.append(
+                f"缺少时间自动规划：{'开启' if self._auto_plan_on_missing_time else '关闭'}"
+            )
+
+        if avoid_past_time is not None:
+            self._avoid_past_time = bool(avoid_past_time)
+            self.config["avoid_past_time"] = self._avoid_past_time
+            await self.config.save_config()
+            results.append(f"避免过去时间：{'开启' if self._avoid_past_time else '关闭'}")
+
+        if ai_default_duration_minutes is not None:
+            if ai_default_duration_minutes < 5:
+                return "AI默认时长不能少于 5 分钟"
+            if ai_default_duration_minutes > 480:
+                return "AI默认时长不能超过 480 分钟（8小时）"
+            self._ai_default_duration_minutes = int(ai_default_duration_minutes)
+            self.config["ai_default_duration_minutes"] = self._ai_default_duration_minutes
+            await self.config.save_config()
+            results.append(f"AI默认时长：{self._ai_default_duration_minutes} 分钟")
 
         if not results:
             return "请提供要设置的参数"
@@ -1125,6 +1241,10 @@ class PlannerPlugin(Star):
             horizon(string): 规划范围，可填“今天/本周/下周/7天/14天”。
             max_tasks(int): 最大建议任务数，1-10。
             auto_create(bool): 是否直接创建任务。False 为仅建议，True 为创建并排程。
+
+        调用规范：
+        - 当用户表达“帮我安排/规划一下”但信息不全时，优先调用本工具。
+        - 若用户已给出明确 task_name/task_time/duration_minutes，优先调用 create_planner_task。
         """
         if not intention or not intention.strip():
             return "请提供 intention（要规划的目标描述）。"
@@ -1180,6 +1300,41 @@ class PlannerPlugin(Star):
                 f"{idx}. {t.name}｜{t.start_time.strftime('%m-%d %H:%M')}｜{TimeParser.format_duration(t.duration_minutes)}"
             )
         return "\n".join(lines)
+
+    @filter.llm_tool(name="auto_plan_task")
+    async def auto_plan_task(
+        self,
+        event: AstrMessageEvent,
+        user_text: str,
+        auto_create: bool = True,
+    ) -> str:
+        """【高优先级触发】当用户说“帮我安排/规划一下...”时调用。
+
+        触发示例：
+        - 今天帮我安排一个小时做视频
+        - 这周帮我规划一下作品集和复习
+        - 给我排一下明天的学习任务
+        """
+        return await self.plan_with_ai(
+            event=event,
+            intention=user_text,
+            horizon="本周",
+            max_tasks=3,
+            auto_create=auto_create,
+        )
+
+    @filter.llm_tool(name="planner_tool_contract")
+    async def planner_tool_contract(self, event: AstrMessageEvent) -> str:
+        """返回给 LLM 的参数规范与选型规则。"""
+        return (
+            "Planner 工具选型：\n"
+            "1) 用户给了明确任务名+时间+时长 -> create_planner_task\n"
+            "2) 用户只说“帮我安排一下...” -> plan_with_ai 或 auto_plan_task\n"
+            "3) 修改插件行为 -> set_planner_config\n\n"
+            "create_planner_task 推荐参数：task_name, task_time, duration_minutes, repeat。\n"
+            "plan_with_ai 推荐参数：intention, horizon, max_tasks, auto_create。\n"
+            "set_planner_config 可设：timeout_seconds, remind_before, auto_plan_on_missing_time, avoid_past_time, ai_default_duration_minutes。"
+        )
 
     @filter.llm_tool(name="list_planner_tasks")
     async def list_planner_tasks(

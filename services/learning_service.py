@@ -207,7 +207,9 @@ class LearningService:
         if canonical and alias and canonical != alias and len(canonical) >= 2:
             await self.learn_alias(alias, canonical)
 
-    async def suggest_duration_minutes(self, task_name: str) -> int:
+    async def suggest_duration_minutes(
+        self, task_name: str, fallback_minutes: int = 45
+    ) -> int:
         """给任务推荐时长"""
         learned = await self.get_default_duration(task_name)
         if learned:
@@ -216,7 +218,7 @@ class LearningService:
         complex_keywords = ["项目", "复习", "学习", "写代码", "写文档", "训练", "整理"]
         if any(k in task_name for k in complex_keywords):
             return 90
-        return 45
+        return _safe_int(fallback_minutes, 45)
 
     async def suggest_time_slot(self, task_name: str) -> str:
         """给任务推荐时间段（如 morning/afternoon/evening）"""
