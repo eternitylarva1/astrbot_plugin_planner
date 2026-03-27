@@ -28,5 +28,35 @@
     "type": "int",
     "default": 45,
     "hint": "当没有学习数据且用户未指定时长时使用"
+  },
+  "habit_planning_enabled": {
+    "description": "是否启用习惯驱动规划",
+    "type": "bool",
+    "default": true,
+    "hint": "关闭后，自动规划将减少对历史习惯的依赖，改用更中性的建议"
+  },
+  "habit_weight": {
+    "description": "习惯权重（0~1）",
+    "type": "float",
+    "default": 0.7,
+    "hint": "值越高越依赖已学习偏好；值越低越偏向通用默认策略"
+  },
+  "suggestion_count": {
+    "description": "AI默认建议数量",
+    "type": "int",
+    "default": 3,
+    "hint": "自动规划默认建议任务数上限（1-10）"
+  },
+  "max_daily_minutes": {
+    "description": "每日最大规划时长（分钟）",
+    "type": "int",
+    "default": 360,
+    "hint": "同一天自动规划任务总时长超过该值时会顺延到后续日期"
+  },
+  "learning_confidence_threshold": {
+    "description": "学习置信阈值（0~1）",
+    "type": "float",
+    "default": 0.35,
+    "hint": "学习置信度低于阈值时，系统会减少习惯干预"
   }
 }

@@ -255,6 +255,11 @@ class LearningService:
                 return slot
         return "evening" if key == "complex" else "morning"
 
+    @staticmethod
+    def _is_complex_task(task_name: str) -> bool:
+        complex_keywords = ["项目", "复习", "学习", "写代码", "写文档", "训练", "整理", "深度"]
+        return any(k in task_name for k in complex_keywords)
+
     async def get_time_preference(self) -> Dict[str, List[str]]:
         """获取时间段偏好"""
         data = await self._ensure_data()
@@ -400,6 +405,122 @@ class LearningService:
         after = self._summarize_data(data)
         return {"scope": scope_key, "before": before, "after": after}
 
+    async def estimate_learning_confidence(self, task_name: str) -> float:
+        """估算该任务的学习置信度（0~1）"""
+        data = await self._ensure_data()
+        normalized_name = task_name.strip()
+        confidence = 0.0
+
+        stats = data.task_durations.get(normalized_name)
+        if stats:
+            confidence += min(_safe_int(getattr(stats, "count", 0), 0) / 5.0, 1.0) * 0.6
+        elif data.task_durations:
+            # 没有精确命中时，仅给予很小的全局置信度
+            confidence += 0.15
+
+        key = "complex" if self._is_complex_task(task_name) else "simple"
+        patterns = data.time_patterns.get(key) or []
+        if patterns:
+            confidence += 0.25
+
+        feedback_rules = data.feedback_rules or {}
+        if feedback_rules.get("prefer_complex_slot") and key == "complex":
+            confidence += 0.15
+
+        return max(0.0, min(1.0, confidence))
+
+    async def _slot_adjustments_from_feedback(self, task_name: str) -> Dict[str, float]:
+        """把反馈规则转为时间段加权分。"""
+        data = await self._ensure_data()
+        rules = data.feedback_rules or {}
+        scores: Dict[str, float] = {"morning": 0.0, "afternoon": 0.0, "evening": 0.0}
+        key = "complex" if self._is_complex_task(task_name) else "simple"
+        text = task_name.strip()
+
+        prefer_complex_slot = rules.get("prefer_complex_slot")
+        if prefer_complex_slot and key == "complex" and prefer_complex_slot in scores:
+            scores[prefer_complex_slot] += 0.8
+
+        avoid_by_keyword = rules.get("avoid_slot_by_keyword") or {}
+        for keyword, slot in avoid_by_keyword.items():
+            if keyword in text and slot in scores:
+                scores[slot] -= 1.0
+
+        return scores
+
+    async def score_slot(
+        self,
+        task_name: str,
+        slot: str,
+        habit_weight: float = 0.7,
+        habit_enabled: bool = True,
+        confidence_threshold: float = 0.35,
+    ) -> float:
+        """给时间段打分，供规划器选择。"""
+        if slot not in {"morning", "afternoon", "evening"}:
+            return -999.0
+
+        if not habit_enabled:
+            return 0.0 if slot == "afternoon" else -0.05
+
+        confidence = await self.estimate_learning_confidence(task_name)
+        if confidence < confidence_threshold:
+            return 0.0 if slot == "afternoon" else -0.05
+
+        learned = await self.suggest_time_slot(task_name)
+        learned_score = 1.0 if slot == learned else 0.0
+        feedback_scores = await self._slot_adjustments_from_feedback(task_name)
+        feedback_score = feedback_scores.get(slot, 0.0)
+        data = await self._ensure_data()
+        negative_bias = _safe_float(
+            (data.feedback_rules or {}).get("negative_feedback_bias", 0.0)
+        )
+        effective_habit_weight = max(0.0, min(1.0, habit_weight * (1 - negative_bias)))
+        return (
+            effective_habit_weight * learned_score
+            + (1 - effective_habit_weight) * 0.1
+            + feedback_score
+        )
+
+    async def record_planning_feedback(self, feedback_text: str) -> Dict[str, Any]:
+        """记录用户对计划建议的反馈并更新规则。"""
+        data = await self._ensure_data()
+        text = (feedback_text or "").strip()
+        if not text:
+            return {"ok": False, "message": "反馈内容为空"}
+
+        rules = data.feedback_rules or {}
+        feedback_history = list(data.feedback_history or [])
+        feedback_history.append(text)
+        data.feedback_history = feedback_history[-50:]
+
+        updates: List[str] = []
+
+        if "晚上" in text and any(k in text for k in ["深度", "复杂", "专注", "高强度"]):
+            rules["prefer_complex_slot"] = "evening"
+            updates.append("复杂任务优先安排在晚上")
+        elif "早上" in text and any(k in text for k in ["不要", "别", "不想"]):
+            slot = "morning"
+            keyword = "学习" if "学习" in text else ("复习" if "复习" in text else "任务")
+            avoid_by_keyword = rules.get("avoid_slot_by_keyword") or {}
+            avoid_by_keyword[keyword] = slot
+            rules["avoid_slot_by_keyword"] = avoid_by_keyword
+            updates.append(f"避免在早上安排「{keyword}」")
+        elif "不准" in text or "不准确" in text:
+            old_bias = _safe_float(rules.get("negative_feedback_bias", 0.0))
+            rules["negative_feedback_bias"] = max(0.0, min(1.0, old_bias + 0.2))
+            updates.append("降低习惯推断强度（减少强干预）")
+        else:
+            notes = list(rules.get("free_text_notes") or [])
+            notes.append(text)
+            rules["free_text_notes"] = notes[-20:]
+            updates.append("已记录为偏好备注")
+
+        data.feedback_rules = rules
+        await self._save_data()
+
+        return {"ok": True, "message": "；".join(updates), "updates": updates}
+
     async def generate_system_prompt(self) -> str:
         """生成系统提示词片段"""
         data = await self._ensure_data()
@@ -430,5 +551,17 @@ class LearningService:
                 parts.append(
                     f"- 简单任务偏好: {', '.join(data.time_patterns['simple'])}"
                 )
+
+        if data.feedback_rules:
+            parts.append("\n用户即时反馈规则：")
+            prefer_complex_slot = data.feedback_rules.get("prefer_complex_slot")
+            if prefer_complex_slot:
+                parts.append(f"- 复杂任务优先安排在: {prefer_complex_slot}")
+            avoid_map = data.feedback_rules.get("avoid_slot_by_keyword") or {}
+            for keyword, slot in list(avoid_map.items())[:10]:
+                parts.append(f"- 避免在 {slot} 安排: {keyword}")
+            notes = data.feedback_rules.get("free_text_notes") or []
+            for note in notes[-3:]:
+                parts.append(f"- 备注: {note}")
 
         return "\n".join(parts) if parts else ""
