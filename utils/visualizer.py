@@ -237,7 +237,7 @@ class Visualizer:
             padding: 28px;
             box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
             width: 96vw;
-            max-width: 1280px;
+            max-width: 720px;
             min-height: 92vh;
             margin: 0 auto;
             color: #1f2937;
@@ -443,6 +443,33 @@ class Visualizer:
             font-size: 12px;
             color: #ccc;
         }}
+        @media (max-width: 768px) {{
+            body {{
+                align-items: flex-start;
+            }}
+            .container {{
+                width: 100vw;
+                min-height: 100vh;
+                border-radius: 0;
+                padding: 16px;
+            }}
+            .header {{
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }}
+            .title {{
+                font-size: 24px;
+            }}
+            .task-name {{
+                font-size: 16px;
+            }}
+            .stats-row {{
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -547,7 +574,7 @@ class Visualizer:
             padding: 28px;
             box-shadow: 0 16px 46px rgba(15, 23, 42, 0.28);
             width: 96vw;
-            max-width: 1500px;
+            max-width: 760px;
             min-height: 92vh;
             margin: 0 auto;
             color: #1f2937;
@@ -642,7 +669,19 @@ class Visualizer:
         }}
         @media (max-width: 768px) {{
             .week-grid {{
-                grid-template-columns: repeat(4, 1fr);
+                grid-template-columns: 1fr;
+            }}
+            body {{
+                align-items: flex-start;
+            }}
+            .container {{
+                width: 100vw;
+                min-height: 100vh;
+                border-radius: 0;
+                padding: 16px;
+            }}
+            .title {{
+                font-size: 24px;
             }}
         }}
     </style>
