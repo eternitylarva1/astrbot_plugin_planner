@@ -137,6 +137,82 @@ class PlannerPlugin(Star):
         matched.sort(key=lambda x: len(x.name))
         return matched[0]
 
+    async def _prepare_task_creation(
+        self,
+        event: AstrMessageEvent,
+        task_name: str,
+        task_time: datetime,
+        duration: int,
+        repeat: Optional[str] = None,
+        interactive: bool = True,
+    ) -> Dict[str, Any]:
+        """统一处理创建任务前的冲突检测。
+
+        返回:
+        - ok=True 且 task 不为空: 可直接创建
+        - ok=False: 已检测到冲突，message 为给用户的提示文案
+        """
+        conflicts = await self.task_service.check_conflict(task_time, duration)
+        if not conflicts:
+            task = Task(
+                id=str(uuid.uuid4()),
+                name=task_name,
+                start_time=task_time,
+                duration_minutes=duration,
+                status="pending",
+                remind_before=await self.learning_service.get_remind_preference(
+                    task_name
+                ),
+                repeat=repeat,
+                created_at=datetime.now(),
+                session_origin=event.unified_msg_origin,
+            )
+            return {"ok": True, "task": task}
+
+        candidate_time = await self.task_service.get_next_available_slot(
+            task_time.date(), duration
+        )
+        conflict_lines = []
+        for c in conflicts[:3]:
+            if c.start_time:
+                conflict_lines.append(
+                    f"• {c.name}（{c.start_time.strftime('%H:%M')}-{c.get_end_time().strftime('%H:%M')}）"
+                )
+
+        message = f"⚠️ 该时间段存在冲突：{task_time.strftime('%Y-%m-%d %H:%M')}\n"
+        if conflict_lines:
+            message += "\n".join(conflict_lines) + "\n"
+        message += f"💡 候选时间：{candidate_time.strftime('%Y-%m-%d %H:%M')}\n\n"
+
+        if interactive:
+            self._pending_tasks[event.unified_msg_origin] = {
+                "step": "awaiting_conflict_choice",
+                "name": task_name,
+                "task_time": task_time,
+                "duration": duration,
+                "repeat": repeat,
+                "candidate_time": candidate_time,
+                "pending_at": time.perf_counter(),
+            }
+            message += (
+                "请回复：\n"
+                "1) 自动顺延（推荐）\n"
+                "2) 候选时间\n"
+                "3) 仍然创建\n"
+                "4) 取消"
+            )
+        else:
+            message += "如需一键处理，请在描述中加入「自动顺延到下一个空档」。"
+        return {"ok": False, "message": message, "candidate_time": candidate_time}
+
+    async def _finalize_task_creation(self, task: Task):
+        """统一创建任务后的收尾逻辑。"""
+        await self.task_service.create_task(task)
+        await self.reminder_service.schedule_reminder(task)
+        await self.learning_service.record_user_specified_duration(
+            task.name, task.duration_minutes
+        )
+
     async def terminate(self):
         """插件卸载时调用"""
         await self.reminder_service.stop()
@@ -324,23 +400,15 @@ class PlannerPlugin(Star):
             )
             return
 
-        # 有时间且有时长 → 直接创建任务
-        task = Task(
-            id=str(uuid.uuid4()),
-            name=task_name,
-            start_time=task_time,
-            duration_minutes=duration,
-            status="pending",
-            remind_before=await self.learning_service.get_remind_preference(task_name),
-            repeat=repeat,
-            created_at=datetime.now(),
-            session_origin=event.unified_msg_origin,
+        prep = await self._prepare_task_creation(
+            event, task_name, task_time, duration, repeat
         )
+        if not prep["ok"]:
+            yield event.plain_result(prep["message"])
+            return
 
-        # 保存任务
-        await self.task_service.create_task(task)
-        await self.reminder_service.schedule_reminder(task)
-        await self.learning_service.record_user_specified_duration(task_name, duration)
+        task = prep["task"]
+        await self._finalize_task_creation(task)
 
         # 格式化输出
         response = (
@@ -815,21 +883,23 @@ class PlannerPlugin(Star):
                 f"请补充完整后再次调用此工具，或使用 /计划 命令进行交互式创建。"
             )
 
-        # 时间和时长都有 → 直接创建
-        task = Task(
-            id=str(uuid.uuid4()),
-            name=task_name,
-            start_time=task_time,
-            duration_minutes=duration,
-            status="pending",
-            remind_before=await self.learning_service.get_remind_preference(task_name),
-            repeat=repeat,
-            created_at=datetime.now(),
-            session_origin=event.unified_msg_origin,
+        auto_shift = any(
+            kw in user_input for kw in ["自动顺延", "下一个空档", "下个空档", "顺延"]
         )
-        await self.task_service.create_task(task)
-        await self.reminder_service.schedule_reminder(task)
-        await self.learning_service.record_user_specified_duration(task_name, duration)
+        if auto_shift:
+            conflicts = await self.task_service.check_conflict(task_time, duration)
+            if conflicts:
+                task_time = await self.task_service.get_next_available_slot(
+                    task_time.date(), duration
+                )
+
+        prep = await self._prepare_task_creation(
+            event, task_name, task_time, duration, repeat, interactive=False
+        )
+        if not prep["ok"]:
+            return prep["message"]
+        task = prep["task"]
+        await self._finalize_task_creation(task)
 
         return (
             f"✅ 任务已创建\n"
@@ -1104,30 +1174,17 @@ class PlannerPlugin(Star):
                 )
                 return
 
-            # 两者都有了 → 创建任务
+            # 两者都有了 → 创建任务（先检查冲突）
             task_name = pending["name"]
             repeat = pending.get("repeat")
-
-            task = Task(
-                id=str(uuid.uuid4()),
-                name=task_name,
-                start_time=task_time,
-                duration_minutes=duration,
-                status="pending",
-                remind_before=await self.learning_service.get_remind_preference(
-                    task_name
-                ),
-                repeat=repeat,
-                created_at=datetime.now(),
-                session_origin=session_id,
+            prep = await self._prepare_task_creation(
+                event, task_name, task_time, duration, repeat
             )
-
-            await self.task_service.create_task(task)
-            await self.reminder_service.schedule_reminder(task)
-            await self.learning_service.record_user_specified_duration(
-                task_name, duration
-            )
-
+            if not prep["ok"]:
+                yield event.plain_result(prep["message"])
+                return
+            task = prep["task"]
+            await self._finalize_task_creation(task)
             del self._pending_tasks[session_id]
 
             yield event.plain_result(
@@ -1188,14 +1245,49 @@ class PlannerPlugin(Star):
                 )
                 return
 
-            # 两者都有了 → 创建任务
+            # 两者都有了 → 创建任务（先检查冲突）
             task_name = pending["name"]
             repeat = pending.get("repeat")
+            prep = await self._prepare_task_creation(
+                event, task_name, task_time, duration, repeat
+            )
+            if not prep["ok"]:
+                yield event.plain_result(prep["message"])
+                return
+            task = prep["task"]
+            await self._finalize_task_creation(task)
+            del self._pending_tasks[session_id]
 
+            yield event.plain_result(
+                f"✅ 任务已创建\n━━━━━━━━━━━━━━━\n"
+                f"📌 {task.name}\n"
+                f"⏰ {task.start_time.strftime('%Y-%m-%d %H:%M')}\n"
+                f"⏱️ {TimeParser.format_duration(task.duration_minutes)}\n"
+                f"\n💡 {task.remind_before}分钟后提醒你"
+            )
+
+        elif step == "awaiting_conflict_choice":
+            # 等待用户处理冲突：自动顺延/候选时间/仍然创建/取消
+            normalized = user_input.strip().lower()
+            if normalized in {"自动顺延", "顺延", "下一个空档", "下个空档", "1"}:
+                start_time = pending.get("candidate_time")
+            elif normalized in {"候选时间", "改到候选时间", "2"}:
+                start_time = pending.get("candidate_time")
+            elif normalized in {"仍然创建", "继续创建", "强制创建", "3"}:
+                start_time = pending.get("task_time")
+            else:
+                del self._pending_tasks[session_id]
+                yield event.plain_result("已取消创建任务")
+                event.stop_event()
+                return
+
+            task_name = pending["name"]
+            duration = pending["duration"]
+            repeat = pending.get("repeat")
             task = Task(
                 id=str(uuid.uuid4()),
                 name=task_name,
-                start_time=task_time,
+                start_time=start_time,
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
@@ -1205,13 +1297,7 @@ class PlannerPlugin(Star):
                 created_at=datetime.now(),
                 session_origin=session_id,
             )
-
-            await self.task_service.create_task(task)
-            await self.reminder_service.schedule_reminder(task)
-            await self.learning_service.record_user_specified_duration(
-                task_name, duration
-            )
-
+            await self._finalize_task_creation(task)
             del self._pending_tasks[session_id]
 
             yield event.plain_result(
