@@ -63,7 +63,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • create_planner_task("明天上午9点开会1小时")
   • list_planner_tasks("本周")
 """,
-    "1.0.8",
+    "1.0.9",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
@@ -891,6 +891,10 @@ class PlannerPlugin(Star):
         merged_task_name = re.sub(
             r"(大概|左右|估计|差不多|些许)\s*", "", merged_task_name
         ).strip()
+        # 统一任务名格式：若包含长句/标点，二次提炼为核心事件描述
+        if any(sep in merged_task_name for sep in ["，", "。", ";", "；"]):
+            merged_task_name = TimeParser._extract_task_name(merged_task_name)
+            merged_task_name = merged_task_name.strip()
 
         # 缺少时长 → 提示用户
         if not merged_duration:

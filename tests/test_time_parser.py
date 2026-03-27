@@ -57,6 +57,12 @@ class TestTimeParserRegression(unittest.TestCase):
             datetime(2026, 3, 28, 17, 0),
         )
 
+    def test_extract_core_task_name_from_verbose_description(self):
+        text = "3月27日晚上6点，参加宣讲会。请提前到达，注意着装得体，准备好相关问题。"
+        parsed = TimeParser.parse_task_info(text)
+        self.assertEqual(parsed["task_name"], "参加宣讲会")
+        self.assertEqual(parsed["datetime"], datetime(2026, 3, 27, 18, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

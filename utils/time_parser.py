@@ -390,12 +390,19 @@ class TimeParser:
         )
         name = re.sub(r"[\d.]+\s*(?:小时|分钟|秒钟|h|min|天|周)", "", name)
         name = re.sub(r"(预计持续|预计|持续|需要去做|有一个|请你帮我计划一下|请提前)", "", name)
+        name = name.replace("一个", "")
+        name = name.replace("月日", " ").replace("月号", " ")
 
-        # 常见分隔符后优先选择最像任务名的片段
-        segments = [seg.strip(" ，。；;、") for seg in re.split(r"[，。；;、]", name) if seg.strip(" ，。；;、")]
+        # 常见分隔符后优先选择首个“任务语义”片段，避免拿到提醒性句子
+        segments = [
+            seg.strip(" ，。；;、")
+            for seg in re.split(r"[，。；;、]", name)
+            if seg.strip(" ，。；;、")
+        ]
         if segments:
-            segments.sort(key=len, reverse=True)
-            name = segments[0]
+            noise_pattern = r"(请提前|注意|准备|帮我计划|帮我安排|得体|相关问题)"
+            preferred = [seg for seg in segments if not re.search(noise_pattern, seg) and len(seg) > 1]
+            name = preferred[0] if preferred else segments[0]
 
         # 移除数字
         name = re.sub(r"\d+", "", name)
