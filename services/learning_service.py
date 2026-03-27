@@ -254,12 +254,26 @@ class LearningService:
             data.remind_preferences["default"] = _safe_int(minutes)
         await self._save_data()
 
-    async def get_remind_preference(self, task_name: Optional[str] = None) -> int:
+    async def ensure_default_remind_preference(self, default_minutes: int) -> int:
+        """确保存在全局默认提醒值；若缺失则写入。"""
+        data = await self._ensure_data()
+        if "default" not in data.remind_preferences:
+            data.remind_preferences["default"] = _safe_int(default_minutes, 10)
+            await self._save_data()
+        return _safe_int(
+            data.remind_preferences.get("default"), _safe_int(default_minutes, 10)
+        )
+
+    async def get_remind_preference(
+        self,
+        task_name: Optional[str] = None,
+        fallback_minutes: int = 10,
+    ) -> int:
         """获取提醒提前时间"""
         data = await self._ensure_data()
         if task_name and task_name in data.remind_preferences:
             return _safe_int(data.remind_preferences[task_name])
-        return _safe_int(data.remind_preferences.get("default", 10))
+        return _safe_int(data.remind_preferences.get("default"), fallback_minutes)
 
     async def get_all_learned_durations(self) -> Dict[str, Dict]:
         """获取所有学习到的时长统计"""
