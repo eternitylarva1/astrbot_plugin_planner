@@ -75,8 +75,8 @@ class PlannerPlugin(Star):
 
         # 初始化服务
         self.storage = StorageService("astrbot_plugin_planner")
-        self.task_service = TaskService(self.storage)
         self.learning_service = LearningService(self.storage)
+        self.task_service = TaskService(self.storage, self.learning_service)
         self.scheduler_adapter = AstrBotSchedulerAdapter(context)
         self.reminder_service = ReminderService(
             self.storage, self.task_service, self.scheduler_adapter
@@ -90,14 +90,37 @@ class PlannerPlugin(Star):
         self._auto_plan_on_missing_time = config.get("auto_plan_on_missing_time", True)
         self._avoid_past_time = config.get("avoid_past_time", True)
         self._ai_default_duration_minutes = config.get("ai_default_duration_minutes", 45)
+        self._habit_planning_enabled = config.get("habit_planning_enabled", True)
+        self._habit_weight = float(config.get("habit_weight", 0.7))
+        self._suggestion_count = int(config.get("suggestion_count", 3))
+        self._max_daily_minutes = int(config.get("max_daily_minutes", 360))
+        self._learning_confidence_threshold = float(
+            config.get("learning_confidence_threshold", 0.35)
+        )
 
         # 状态管理
         self._pending_tasks: Dict[
             str, Dict
         ] = {}  # session_id -> 等待确认的任务（带 pending_at 时间戳）
         self._goal_states: Dict[str, GoalState] = {}  # session_id -> 目标状态
+        self._runtime_init_done = False
+        self._runtime_init_lock = asyncio.Lock()
 
         logger.info("计划助手插件已加载")
+
+    async def _ensure_runtime_initialized(self):
+        """首次运行前补齐学习系统默认提醒值，避免仅存在内存配置。"""
+        if self._runtime_init_done:
+            return
+
+        async with self._runtime_init_lock:
+            if self._runtime_init_done:
+                return
+
+            await self.learning_service.ensure_default_remind_preference(
+                self._default_remind_before
+            )
+            self._runtime_init_done = True
 
     @staticmethod
     def _filter_tasks_by_session(tasks: List[Task], session_origin: str) -> List[Task]:
@@ -121,6 +144,19 @@ class PlannerPlugin(Star):
             return True
 
         return False
+
+    @staticmethod
+    def _format_timeout_text(timeout_seconds: int) -> str:
+        """将超时时长（秒）格式化为可读文本。"""
+        if timeout_seconds < 60:
+            return f"{timeout_seconds}秒"
+
+        minutes = timeout_seconds / 60
+        if timeout_seconds % 60 == 0:
+            return f"{int(minutes)}分钟"
+
+        minute_text = f"{minutes:.1f}".rstrip("0").rstrip(".")
+        return f"{minute_text}分钟"
 
     async def _get_session_pending_tasks(self, session_origin: str) -> List[Task]:
         """获取当前会话的待办任务。"""
@@ -172,6 +208,7 @@ class PlannerPlugin(Star):
         - ok=True 且 task 不为空: 可直接创建
         - ok=False: 已检测到冲突，message 为给用户的提示文案
         """
+        await self._ensure_runtime_initialized()
         conflicts = await self.task_service.check_conflict(task_time, duration)
         if not conflicts:
             task = Task(
@@ -181,7 +218,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),
@@ -240,6 +277,16 @@ class PlannerPlugin(Star):
                 time_slot = "evening"
         await self.learning_service.record_task_creation_pattern(
             task.name, time_slot, task.duration_minutes
+        )
+
+    @staticmethod
+    def _format_learning_change(before: Dict[str, int], after: Dict[str, int]) -> str:
+        """格式化学习数据删除前后对比。"""
+        return (
+            "删除前后对比：\n"
+            f"- 时长习惯：{before.get('durations', 0)} -> {after.get('durations', 0)}\n"
+            f"- 别名习惯：{before.get('aliases', 0)} -> {after.get('aliases', 0)}\n"
+            f"- 时段习惯：{before.get('time_total', 0)} -> {after.get('time_total', 0)}"
         )
 
     @staticmethod
@@ -310,24 +357,53 @@ class PlannerPlugin(Star):
         self, event: AstrMessageEvent, intention: str, horizon_days: int = 7, max_tasks: int = 5
     ) -> List[Dict[str, Any]]:
         """根据用户模糊意图自动生成计划建议（基于学习习惯 + 冲突检查）。"""
-        names = self._extract_plan_task_names(intention)[:max_tasks]
+        final_max_tasks = min(max_tasks, max(self._suggestion_count, 1))
+        names = self._extract_plan_task_names(intention)[:final_max_tasks]
         if not names:
             return []
 
         today = date.today()
         now_dt = datetime.now()
         suggestions: List[Dict[str, Any]] = []
+        daily_minutes_used: Dict[date, int] = {}
         for idx, name in enumerate(names):
             cleaned_name = self._cleanup_planning_phrase(name) or name
             parsed = TimeParser.parse_task_info(name)
             parsed_name = parsed.get("task_name") or cleaned_name
             duration = parsed.get("duration")
+            confidence = await self.learning_service.estimate_learning_confidence(parsed_name)
             if not duration:
-                duration = await self.learning_service.suggest_duration_minutes(
-                    parsed_name, self._ai_default_duration_minutes
+                if (
+                    self._habit_planning_enabled
+                    and confidence >= self._learning_confidence_threshold
+                ):
+                    learned_duration = await self.learning_service.suggest_duration_minutes(
+                        parsed_name, self._ai_default_duration_minutes
+                    )
+                    duration = int(
+                        round(
+                            self._habit_weight * learned_duration
+                            + (1 - self._habit_weight) * self._ai_default_duration_minutes
+                        )
+                    )
+                else:
+                    duration = self._ai_default_duration_minutes
+
+            candidate_slots = ["morning", "afternoon", "evening"]
+            slot_scores = {}
+            for candidate in candidate_slots:
+                slot_scores[candidate] = await self.learning_service.score_slot(
+                    parsed_name,
+                    candidate,
+                    habit_weight=self._habit_weight,
+                    habit_enabled=self._habit_planning_enabled,
+                    confidence_threshold=self._learning_confidence_threshold,
                 )
-            slot = await self.learning_service.suggest_time_slot(name)
+            slot = max(candidate_slots, key=lambda s: slot_scores.get(s, -999.0))
             target_day = today + timedelta(days=min(idx, max(horizon_days - 1, 0)))
+            used_minutes = daily_minutes_used.get(target_day, 0)
+            if used_minutes + duration > self._max_daily_minutes:
+                target_day = target_day + timedelta(days=1)
             base_time = parsed.get("datetime") or datetime.combine(
                 target_day, self._slot_to_time(slot)
             )
@@ -350,8 +426,11 @@ class PlannerPlugin(Star):
                     "start_time": base_time,
                     "duration": duration,
                     "slot": slot,
+                    "confidence": round(confidence, 2),
                 }
             )
+            day_key = base_time.date()
+            daily_minutes_used[day_key] = daily_minutes_used.get(day_key, 0) + duration
         return suggestions
 
     async def terminate(self):
@@ -856,6 +935,92 @@ class PlannerPlugin(Star):
         """
         user_input = _strip_cmd(event.message_str, "学习", "统计", "习惯").lower()
 
+        if user_input.startswith("查看"):
+            user_input = "统计"
+
+        if user_input.startswith("删除"):
+            raw_input = _strip_cmd(event.message_str, "学习", "统计", "习惯")
+            delete_body = raw_input[len("删除") :].strip() if raw_input.startswith("删除") else ""
+            parts = delete_body.split(maxsplit=1)
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "❗参数缺失\n"
+                    "用法：\n"
+                    "/习惯 删除 时长 <任务名>\n"
+                    "/习惯 删除 别名 <alias>\n"
+                    "/习惯 删除 时段 <任务名|complex|simple>"
+                )
+                return
+
+            delete_type = parts[0].strip().lower()
+            target = parts[1].strip()
+            if not target:
+                yield event.plain_result("❗请提供删除目标。")
+                return
+
+            if delete_type == "时长":
+                result = await self.learning_service.delete_duration_pattern(target)
+                if result["removed"]:
+                    yield event.plain_result(
+                        f"✅ 已删除时长习惯：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到时长习惯：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            if delete_type == "别名":
+                result = await self.learning_service.delete_alias(target)
+                if result["removed"]:
+                    yield event.plain_result(
+                        f"✅ 已删除别名：{result['key']}（原映射到 {result['removed_payload']}）\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到别名：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            if delete_type == "时段":
+                result = await self.learning_service.delete_time_pattern(target)
+                if result["removed"]:
+                    removed = ", ".join(result["removed_payload"])
+                    yield event.plain_result(
+                        f"✅ 已删除时段习惯分组：{result['key']}（来源：{result['source']}）\n"
+                        f"原有偏好：{removed or '无'}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到可删除的时段习惯分组：{result['key']}（来源：{result['source']}）\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            yield event.plain_result(
+                "不支持的删除类型，请使用：时长 / 别名 / 时段"
+            )
+            return
+
+        if user_input.startswith("重置"):
+            if "全部" not in user_input:
+                yield event.plain_result("目前仅支持：/习惯 重置 全部")
+                return
+            self._pending_tasks[event.unified_msg_origin] = {
+                "step": "awaiting_learning_reset_confirm",
+                "pending_at": time.perf_counter(),
+            }
+            yield event.plain_result(
+                "⚠️ 即将清空全部学习数据（时长/别名/时段）。\n"
+                "请在 2 分钟内回复「确认重置」继续，回复其他内容将取消。"
+            )
+            return
+
         if "自动" in user_input and any(k in user_input for k in ["开", "启用", "关闭", "关", "状态"]):
             if any(k in user_input for k in ["关闭", "关"]):
                 await self.learning_service.set_auto_learning_enabled(False)
@@ -870,6 +1035,29 @@ class PlannerPlugin(Star):
                 f"🧠 自动学习状态：{'开启' if enabled else '关闭'}\n"
                 f"可用命令：/学习 自动开启 或 /学习 自动关闭"
             )
+            return
+
+        if "重建" in user_input:
+            stats = await self.learning_service.rebuild_profile_from_events()
+            yield event.plain_result(
+                "🛠️ 已从事件流重建学习画像（默认忽略删除类事件，便于误删恢复）。\n"
+                f"📚 事件总数：{stats['events_total']}，已重放：{stats['events_replayed']}"
+            )
+            return
+
+        if "最近事件" in user_input:
+            events = await self.learning_service.get_recent_events(limit=10)
+            if not events:
+                yield event.plain_result("📭 暂无事件记录。")
+                return
+            lines = ["🧾 最近事件（最多10条）", "━━━━━━━━━━━━━━━"]
+            for idx, item in enumerate(reversed(events), 1):
+                ts = str(item.get("timestamp", ""))[:19].replace("T", " ")
+                e_type = item.get("type", "unknown")
+                payload = item.get("payload", {}) or {}
+                task_name = payload.get("task_name") or payload.get("habit_key") or "-"
+                lines.append(f"{idx}. [{ts}] {e_type} -> {task_name}")
+            yield event.plain_result("\n".join(lines))
             return
 
         if "统计" in user_input or "习惯" in user_input:
@@ -945,6 +1133,34 @@ class PlannerPlugin(Star):
             f"✅ 提醒已设置为提前 {TimeParser.format_duration(duration)}"
         )
 
+    @filter.command("计划反馈", alias={"反馈计划", "规划反馈"})
+    async def plan_feedback(self, event: AstrMessageEvent) -> MessageEventResult:
+        """记录用户对规划建议的即时反馈。
+
+        示例：
+        /计划反馈 喜欢晚上做深度任务
+        /计划反馈 不要早上安排学习
+        /计划反馈 这个建议不准
+        """
+        feedback_text = _strip_cmd(event.message_str, "计划反馈", "反馈计划", "规划反馈")
+        if not feedback_text:
+            yield event.plain_result(
+                "❗请补充反馈内容\n"
+                "示例：/计划反馈 不要早上安排学习"
+            )
+            return
+
+        result = await self.learning_service.record_planning_feedback(feedback_text)
+        if not result.get("ok"):
+            yield event.plain_result("⚠️ 反馈记录失败，请稍后重试。")
+            return
+
+        yield event.plain_result(
+            f"✅ 已记录反馈：{feedback_text}\n"
+            f"🔧 生效规则：{result.get('message', '已更新')}\n"
+            "下一轮推荐会按该偏好调整。"
+        )
+
     # ========== 帮助 ==========
 
     @filter.command("规划帮助", alias={"计划帮助", "planner_help", "使用说明"})
@@ -972,6 +1188,13 @@ class PlannerPlugin(Star):
             "🧠 学习统计\n"
             "/学习 统计\n"
             "/学习 自动开启|自动关闭\n\n"
+            "/习惯 查看\n"
+            "/习惯 删除 时长 <任务名>\n"
+            "/习惯 删除 别名 <alias>\n"
+            "/习惯 删除 时段 <任务名|complex|simple>\n"
+            "/习惯 重置 全部（需确认）\n\n"
+            "🗣️ 计划反馈\n"
+            "/计划反馈 不要早上安排学习\n\n"
             "🤖 AI 规划（可输入模糊目标）\n"
             "/ai规划 这周把作品集和算法复习安排一下"
         )
@@ -1166,6 +1389,11 @@ class PlannerPlugin(Star):
         auto_plan_on_missing_time: Optional[bool] = None,
         avoid_past_time: Optional[bool] = None,
         ai_default_duration_minutes: Optional[int] = None,
+        habit_planning_enabled: Optional[bool] = None,
+        habit_weight: Optional[float] = None,
+        suggestion_count: Optional[int] = None,
+        max_daily_minutes: Optional[int] = None,
+        learning_confidence_threshold: Optional[float] = None,
     ) -> str:
         """设置计划助手的配置参数（建议 LLM 一次只改一到两个参数）。
 
@@ -1175,6 +1403,11 @@ class PlannerPlugin(Star):
             auto_plan_on_missing_time(bool): 缺少时间时是否自动规划时间。
             avoid_past_time(bool): AI规划是否自动避免过去时间。
             ai_default_duration_minutes(int): AI默认任务时长（分钟）。
+            habit_planning_enabled(bool): 是否启用习惯驱动规划。
+            habit_weight(float): 习惯权重（0~1），越高越依赖已学习偏好。
+            suggestion_count(int): 默认建议任务数上限。
+            max_daily_minutes(int): 每日规划总时长上限（分钟）。
+            learning_confidence_threshold(float): 学习置信度阈值（0~1），低于阈值时减少干预。
         """
         results = []
 
@@ -1186,7 +1419,9 @@ class PlannerPlugin(Star):
             self._PENDING_TIMEOUT_SECONDS = timeout_seconds
             self.config["timeout_seconds"] = timeout_seconds
             await self.config.save_config()
-            results.append(f"超时时间设置为 {timeout_seconds} 秒")
+            results.append(
+                f"超时时间设置为 {self._format_timeout_text(timeout_seconds)}"
+            )
 
         if remind_before is not None:
             if remind_before < 0:
@@ -1194,6 +1429,7 @@ class PlannerPlugin(Star):
             self._default_remind_before = remind_before
             self.config["remind_before"] = remind_before
             await self.config.save_config()
+            await self.learning_service.record_remind_preference(None, remind_before)
             results.append(f"提前 {remind_before} 分钟提醒")
 
         if auto_plan_on_missing_time is not None:
@@ -1219,6 +1455,50 @@ class PlannerPlugin(Star):
             self.config["ai_default_duration_minutes"] = self._ai_default_duration_minutes
             await self.config.save_config()
             results.append(f"AI默认时长：{self._ai_default_duration_minutes} 分钟")
+
+        if habit_planning_enabled is not None:
+            self._habit_planning_enabled = bool(habit_planning_enabled)
+            self.config["habit_planning_enabled"] = self._habit_planning_enabled
+            await self.config.save_config()
+            results.append(
+                f"习惯驱动规划：{'开启' if self._habit_planning_enabled else '关闭'}"
+            )
+
+        if habit_weight is not None:
+            if habit_weight < 0 or habit_weight > 1:
+                return "habit_weight 必须在 0~1 之间"
+            self._habit_weight = float(habit_weight)
+            self.config["habit_weight"] = self._habit_weight
+            await self.config.save_config()
+            results.append(f"习惯权重：{self._habit_weight:.2f}")
+
+        if suggestion_count is not None:
+            if suggestion_count < 1 or suggestion_count > 10:
+                return "suggestion_count 必须在 1~10 之间"
+            self._suggestion_count = int(suggestion_count)
+            self.config["suggestion_count"] = self._suggestion_count
+            await self.config.save_config()
+            results.append(f"建议数量上限：{self._suggestion_count}")
+
+        if max_daily_minutes is not None:
+            if max_daily_minutes < 30 or max_daily_minutes > 1440:
+                return "max_daily_minutes 必须在 30~1440 之间"
+            self._max_daily_minutes = int(max_daily_minutes)
+            self.config["max_daily_minutes"] = self._max_daily_minutes
+            await self.config.save_config()
+            results.append(f"每日最大规划时长：{self._max_daily_minutes} 分钟")
+
+        if learning_confidence_threshold is not None:
+            if learning_confidence_threshold < 0 or learning_confidence_threshold > 1:
+                return "learning_confidence_threshold 必须在 0~1 之间"
+            self._learning_confidence_threshold = float(learning_confidence_threshold)
+            self.config["learning_confidence_threshold"] = (
+                self._learning_confidence_threshold
+            )
+            await self.config.save_config()
+            results.append(
+                f"学习置信阈值：{self._learning_confidence_threshold:.2f}"
+            )
 
         if not results:
             return "请提供要设置的参数"
@@ -1319,7 +1599,7 @@ class PlannerPlugin(Star):
             event=event,
             intention=user_text,
             horizon="本周",
-            max_tasks=3,
+            max_tasks=self._suggestion_count,
             auto_create=auto_create,
         )
 
@@ -1333,7 +1613,7 @@ class PlannerPlugin(Star):
             "3) 修改插件行为 -> set_planner_config\n\n"
             "create_planner_task 推荐参数：task_name, task_time, duration_minutes, repeat。\n"
             "plan_with_ai 推荐参数：intention, horizon, max_tasks, auto_create。\n"
-            "set_planner_config 可设：timeout_seconds, remind_before, auto_plan_on_missing_time, avoid_past_time, ai_default_duration_minutes。"
+            "set_planner_config 可设：timeout_seconds, remind_before, auto_plan_on_missing_time, avoid_past_time, ai_default_duration_minutes, habit_planning_enabled, habit_weight, suggestion_count, max_daily_minutes, learning_confidence_threshold。"
         )
 
     @filter.llm_tool(name="list_planner_tasks")
@@ -1487,7 +1767,9 @@ class PlannerPlugin(Star):
         self.config["timeout_seconds"] = seconds
         await self.config.save_config()
 
-        yield event.plain_result(f"✅ 超时时间已设置为 {seconds} 秒")
+        yield event.plain_result(
+            f"✅ 超时时间已设置为 {self._format_timeout_text(seconds)}"
+        )
 
     # ========== 事件监听器 - 处理多轮对话 ==========
 
@@ -1517,7 +1799,7 @@ class PlannerPlugin(Star):
             if elapsed > self._PENDING_TIMEOUT_SECONDS:
                 del self._pending_tasks[session_id]
                 yield event.plain_result(
-                    "⏰ 抱歉，上次的问题已超时（超过2分钟），已自动取消。\n"
+                    f"⏰ 抱歉，上次的问题已超时（超过{self._format_timeout_text(self._PENDING_TIMEOUT_SECONDS)}），已自动取消。\n"
                     "如需继续，请重新发送任务指令。"
                 )
                 event.stop_event()
@@ -1682,7 +1964,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),
@@ -1718,6 +2000,18 @@ class PlannerPlugin(Star):
             else:
                 del self._pending_tasks[session_id]
                 yield event.plain_result("已取消创建任务")
+
+        elif step == "awaiting_learning_reset_confirm":
+            if user_input.strip() == "确认重置":
+                result = await self.learning_service.reset_learning_data(scope="all")
+                del self._pending_tasks[session_id]
+                yield event.plain_result(
+                    "✅ 已重置全部学习数据。\n"
+                    f"{self._format_learning_change(result['before'], result['after'])}"
+                )
+            else:
+                del self._pending_tasks[session_id]
+                yield event.plain_result("已取消重置学习数据。")
 
         # 停止事件传播
         event.stop_event()

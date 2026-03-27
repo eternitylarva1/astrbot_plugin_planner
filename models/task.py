@@ -113,6 +113,8 @@ class LearningData:
     task_aliases: dict = field(default_factory=dict)
     time_patterns: dict = field(default_factory=dict)
     remind_preferences: dict = field(default_factory=dict)
+    feedback_rules: dict = field(default_factory=dict)
+    feedback_history: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = {
@@ -120,6 +122,8 @@ class LearningData:
             "task_aliases": self.task_aliases,
             "time_patterns": self.time_patterns,
             "remind_preferences": self.remind_preferences,
+            "feedback_rules": self.feedback_rules,
+            "feedback_history": self.feedback_history,
         }
         for k, v in self.task_durations.items():
             if hasattr(v, "to_dict"):
@@ -141,6 +145,8 @@ class LearningData:
             task_aliases=d.get("task_aliases", {}),
             time_patterns=d.get("time_patterns", {}),
             remind_preferences=d.get("remind_preferences", {}),
+            feedback_rules=d.get("feedback_rules", {}),
+            feedback_history=d.get("feedback_history", []),
         )
 
 

@@ -26,6 +26,7 @@ class StorageService:
         self.recurring_file = self.data_dir / "recurring.json"
         self.goals_file = self.data_dir / "goals.json"
         self.history_file = self.data_dir / "history.json"
+        self.planning_events_file = self.data_dir / "planning_events.json"
 
         # 初始化文件
         self._init_files()
@@ -38,6 +39,7 @@ class StorageService:
             self.recurring_file,
             self.goals_file,
             self.history_file,
+            self.planning_events_file,
         ]:
             if not file_path.exists():
                 file_path.write_text(
@@ -46,6 +48,7 @@ class StorageService:
                     or "recurring" in str(file_path)
                     or "goals" in str(file_path)
                     or "history" in str(file_path)
+                    or "events" in str(file_path)
                     else "{}"
                 )
 
@@ -61,6 +64,7 @@ class StorageService:
                         or "recurring" in str(file_path)
                         or "goals" in str(file_path)
                         or "history" in str(file_path)
+                        or "events" in str(file_path)
                         else {}
                     )
                 return json.loads(content)
@@ -72,6 +76,7 @@ class StorageService:
                     or "recurring" in str(file_path)
                     or "goals" in str(file_path)
                     or "history" in str(file_path)
+                    or "events" in str(file_path)
                     else {}
                 )
             except Exception as e:
@@ -82,6 +87,7 @@ class StorageService:
                     or "recurring" in str(file_path)
                     or "goals" in str(file_path)
                     or "history" in str(file_path)
+                    or "events" in str(file_path)
                     else {}
                 )
 
@@ -157,6 +163,21 @@ class StorageService:
         if len(history) > 100:
             history = history[-100:]
         await self.write_json(self.history_file, history)
+
+    # ========== 规划事件流 ==========
+
+    async def get_planning_events(self) -> List[Dict]:
+        """获取规划事件流"""
+        return await self.read_json(self.planning_events_file)
+
+    async def add_planning_event(self, event: Dict):
+        """追加一条规划事件"""
+        events = await self.get_planning_events()
+        events.append(event)
+        # 避免无限膨胀，保留最近 5000 条
+        if len(events) > 5000:
+            events = events[-5000:]
+        await self.write_json(self.planning_events_file, events)
 
     # ========== 循环任务操作 ==========
 
