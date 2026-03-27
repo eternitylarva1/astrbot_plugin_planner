@@ -47,6 +47,21 @@ class LearningService:
         if self._data:
             await self.storage.save_learning_data(self._data.to_dict())
 
+    @staticmethod
+    def _summarize_data(data: LearningData) -> Dict[str, int]:
+        """汇总学习数据规模，用于删除前后对比"""
+        duration_count = len(data.task_durations)
+        alias_count = len(data.task_aliases)
+        complex_slots = len(data.time_patterns.get("complex", []))
+        simple_slots = len(data.time_patterns.get("simple", []))
+        return {
+            "durations": duration_count,
+            "aliases": alias_count,
+            "time_complex": complex_slots,
+            "time_simple": simple_slots,
+            "time_total": complex_slots + simple_slots,
+        }
+
     def _is_auto_learning_enabled_from_data(self, data: LearningData) -> bool:
         """从学习数据中读取自动学习开关（默认开启）"""
         raw = data.remind_preferences.get(self._AUTO_LEARNING_KEY, 1)
@@ -254,12 +269,26 @@ class LearningService:
             data.remind_preferences["default"] = _safe_int(minutes)
         await self._save_data()
 
-    async def get_remind_preference(self, task_name: Optional[str] = None) -> int:
+    async def ensure_default_remind_preference(self, default_minutes: int) -> int:
+        """确保存在全局默认提醒值；若缺失则写入。"""
+        data = await self._ensure_data()
+        if "default" not in data.remind_preferences:
+            data.remind_preferences["default"] = _safe_int(default_minutes, 10)
+            await self._save_data()
+        return _safe_int(
+            data.remind_preferences.get("default"), _safe_int(default_minutes, 10)
+        )
+
+    async def get_remind_preference(
+        self,
+        task_name: Optional[str] = None,
+        fallback_minutes: int = 10,
+    ) -> int:
         """获取提醒提前时间"""
         data = await self._ensure_data()
         if task_name and task_name in data.remind_preferences:
             return _safe_int(data.remind_preferences[task_name])
-        return _safe_int(data.remind_preferences.get("default", 10))
+        return _safe_int(data.remind_preferences.get("default"), fallback_minutes)
 
     async def get_all_learned_durations(self) -> Dict[str, Dict]:
         """获取所有学习到的时长统计"""
@@ -282,6 +311,94 @@ class LearningService:
         """获取所有别名映射"""
         data = await self._ensure_data()
         return data.task_aliases.copy()
+
+    async def delete_duration_pattern(self, task_name: str) -> Dict[str, Any]:
+        """删除单个任务时长习惯。"""
+        data = await self._ensure_data()
+        key = task_name.strip()
+        before = self._summarize_data(data)
+        removed = key in data.task_durations
+        removed_payload = data.task_durations.pop(key, None)
+        await self._save_data()
+        after = self._summarize_data(data)
+        return {
+            "removed": removed,
+            "key": key,
+            "removed_payload": removed_payload.to_dict()
+            if hasattr(removed_payload, "to_dict")
+            else removed_payload,
+            "before": before,
+            "after": after,
+        }
+
+    async def delete_alias(self, alias: str) -> Dict[str, Any]:
+        """删除单个任务别名习惯。"""
+        data = await self._ensure_data()
+        key = alias.strip()
+        before = self._summarize_data(data)
+        removed = key in data.task_aliases
+        removed_payload = data.task_aliases.pop(key, None)
+        await self._save_data()
+        after = self._summarize_data(data)
+        return {
+            "removed": removed,
+            "key": key,
+            "removed_payload": removed_payload,
+            "before": before,
+            "after": after,
+        }
+
+    async def delete_time_pattern(self, key_or_task: str) -> Dict[str, Any]:
+        """删除时间段偏好（complex/simple/任务名推断）。"""
+        data = await self._ensure_data()
+        raw = key_or_task.strip()
+        normalized = raw.lower()
+        if normalized in {"complex", "simple"}:
+            target_key = normalized
+        else:
+            complex_keywords = ["写代码", "写报告", "写文档", "项目", "学习", "复习"]
+            target_key = "complex" if any(k in raw for k in complex_keywords) else "simple"
+
+        before = self._summarize_data(data)
+        removed_payload = list(data.time_patterns.get(target_key, []))
+        removed = target_key in data.time_patterns and len(removed_payload) > 0
+        data.time_patterns.pop(target_key, None)
+        await self._save_data()
+        after = self._summarize_data(data)
+        return {
+            "removed": removed,
+            "key": target_key,
+            "source": raw,
+            "removed_payload": removed_payload,
+            "before": before,
+            "after": after,
+        }
+
+    async def reset_learning_data(self, scope: str = "all") -> Dict[str, Any]:
+        """重置学习数据。默认清空全部学习数据。"""
+        data = await self._ensure_data()
+        scope_key = (scope or "all").strip().lower()
+        before = self._summarize_data(data)
+
+        if scope_key == "durations":
+            data.task_durations = {}
+        elif scope_key == "aliases":
+            data.task_aliases = {}
+        elif scope_key in {"time", "time_patterns"}:
+            data.time_patterns = {}
+        else:
+            auto_flag = data.remind_preferences.get(self._AUTO_LEARNING_KEY)
+            data.task_durations = {}
+            data.task_aliases = {}
+            data.time_patterns = {}
+            data.remind_preferences = {}
+            if auto_flag is not None:
+                data.remind_preferences[self._AUTO_LEARNING_KEY] = auto_flag
+            scope_key = "all"
+
+        await self._save_data()
+        after = self._summarize_data(data)
+        return {"scope": scope_key, "before": before, "after": after}
 
     async def generate_system_prompt(self) -> str:
         """生成系统提示词片段"""

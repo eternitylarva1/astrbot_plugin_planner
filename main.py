@@ -96,8 +96,24 @@ class PlannerPlugin(Star):
             str, Dict
         ] = {}  # session_id -> 等待确认的任务（带 pending_at 时间戳）
         self._goal_states: Dict[str, GoalState] = {}  # session_id -> 目标状态
+        self._runtime_init_done = False
+        self._runtime_init_lock = asyncio.Lock()
 
         logger.info("计划助手插件已加载")
+
+    async def _ensure_runtime_initialized(self):
+        """首次运行前补齐学习系统默认提醒值，避免仅存在内存配置。"""
+        if self._runtime_init_done:
+            return
+
+        async with self._runtime_init_lock:
+            if self._runtime_init_done:
+                return
+
+            await self.learning_service.ensure_default_remind_preference(
+                self._default_remind_before
+            )
+            self._runtime_init_done = True
 
     @staticmethod
     def _filter_tasks_by_session(tasks: List[Task], session_origin: str) -> List[Task]:
@@ -121,6 +137,19 @@ class PlannerPlugin(Star):
             return True
 
         return False
+
+    @staticmethod
+    def _format_timeout_text(timeout_seconds: int) -> str:
+        """将超时时长（秒）格式化为可读文本。"""
+        if timeout_seconds < 60:
+            return f"{timeout_seconds}秒"
+
+        minutes = timeout_seconds / 60
+        if timeout_seconds % 60 == 0:
+            return f"{int(minutes)}分钟"
+
+        minute_text = f"{minutes:.1f}".rstrip("0").rstrip(".")
+        return f"{minute_text}分钟"
 
     async def _get_session_pending_tasks(self, session_origin: str) -> List[Task]:
         """获取当前会话的待办任务。"""
@@ -172,6 +201,7 @@ class PlannerPlugin(Star):
         - ok=True 且 task 不为空: 可直接创建
         - ok=False: 已检测到冲突，message 为给用户的提示文案
         """
+        await self._ensure_runtime_initialized()
         conflicts = await self.task_service.check_conflict(task_time, duration)
         if not conflicts:
             task = Task(
@@ -181,7 +211,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),
@@ -240,6 +270,16 @@ class PlannerPlugin(Star):
                 time_slot = "evening"
         await self.learning_service.record_task_creation_pattern(
             task.name, time_slot, task.duration_minutes
+        )
+
+    @staticmethod
+    def _format_learning_change(before: Dict[str, int], after: Dict[str, int]) -> str:
+        """格式化学习数据删除前后对比。"""
+        return (
+            "删除前后对比：\n"
+            f"- 时长习惯：{before.get('durations', 0)} -> {after.get('durations', 0)}\n"
+            f"- 别名习惯：{before.get('aliases', 0)} -> {after.get('aliases', 0)}\n"
+            f"- 时段习惯：{before.get('time_total', 0)} -> {after.get('time_total', 0)}"
         )
 
     @staticmethod
@@ -856,6 +896,92 @@ class PlannerPlugin(Star):
         """
         user_input = _strip_cmd(event.message_str, "学习", "统计", "习惯").lower()
 
+        if user_input.startswith("查看"):
+            user_input = "统计"
+
+        if user_input.startswith("删除"):
+            raw_input = _strip_cmd(event.message_str, "学习", "统计", "习惯")
+            delete_body = raw_input[len("删除") :].strip() if raw_input.startswith("删除") else ""
+            parts = delete_body.split(maxsplit=1)
+            if len(parts) < 2:
+                yield event.plain_result(
+                    "❗参数缺失\n"
+                    "用法：\n"
+                    "/习惯 删除 时长 <任务名>\n"
+                    "/习惯 删除 别名 <alias>\n"
+                    "/习惯 删除 时段 <任务名|complex|simple>"
+                )
+                return
+
+            delete_type = parts[0].strip().lower()
+            target = parts[1].strip()
+            if not target:
+                yield event.plain_result("❗请提供删除目标。")
+                return
+
+            if delete_type == "时长":
+                result = await self.learning_service.delete_duration_pattern(target)
+                if result["removed"]:
+                    yield event.plain_result(
+                        f"✅ 已删除时长习惯：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到时长习惯：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            if delete_type == "别名":
+                result = await self.learning_service.delete_alias(target)
+                if result["removed"]:
+                    yield event.plain_result(
+                        f"✅ 已删除别名：{result['key']}（原映射到 {result['removed_payload']}）\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到别名：{result['key']}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            if delete_type == "时段":
+                result = await self.learning_service.delete_time_pattern(target)
+                if result["removed"]:
+                    removed = ", ".join(result["removed_payload"])
+                    yield event.plain_result(
+                        f"✅ 已删除时段习惯分组：{result['key']}（来源：{result['source']}）\n"
+                        f"原有偏好：{removed or '无'}\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                else:
+                    yield event.plain_result(
+                        f"未找到可删除的时段习惯分组：{result['key']}（来源：{result['source']}）\n"
+                        f"{self._format_learning_change(result['before'], result['after'])}"
+                    )
+                return
+
+            yield event.plain_result(
+                "不支持的删除类型，请使用：时长 / 别名 / 时段"
+            )
+            return
+
+        if user_input.startswith("重置"):
+            if "全部" not in user_input:
+                yield event.plain_result("目前仅支持：/习惯 重置 全部")
+                return
+            self._pending_tasks[event.unified_msg_origin] = {
+                "step": "awaiting_learning_reset_confirm",
+                "pending_at": time.perf_counter(),
+            }
+            yield event.plain_result(
+                "⚠️ 即将清空全部学习数据（时长/别名/时段）。\n"
+                "请在 2 分钟内回复「确认重置」继续，回复其他内容将取消。"
+            )
+            return
+
         if "自动" in user_input and any(k in user_input for k in ["开", "启用", "关闭", "关", "状态"]):
             if any(k in user_input for k in ["关闭", "关"]):
                 await self.learning_service.set_auto_learning_enabled(False)
@@ -972,6 +1098,11 @@ class PlannerPlugin(Star):
             "🧠 学习统计\n"
             "/学习 统计\n"
             "/学习 自动开启|自动关闭\n\n"
+            "/习惯 查看\n"
+            "/习惯 删除 时长 <任务名>\n"
+            "/习惯 删除 别名 <alias>\n"
+            "/习惯 删除 时段 <任务名|complex|simple>\n"
+            "/习惯 重置 全部（需确认）\n\n"
             "🤖 AI 规划（可输入模糊目标）\n"
             "/ai规划 这周把作品集和算法复习安排一下"
         )
@@ -1186,7 +1317,9 @@ class PlannerPlugin(Star):
             self._PENDING_TIMEOUT_SECONDS = timeout_seconds
             self.config["timeout_seconds"] = timeout_seconds
             await self.config.save_config()
-            results.append(f"超时时间设置为 {timeout_seconds} 秒")
+            results.append(
+                f"超时时间设置为 {self._format_timeout_text(timeout_seconds)}"
+            )
 
         if remind_before is not None:
             if remind_before < 0:
@@ -1194,6 +1327,7 @@ class PlannerPlugin(Star):
             self._default_remind_before = remind_before
             self.config["remind_before"] = remind_before
             await self.config.save_config()
+            await self.learning_service.record_remind_preference(None, remind_before)
             results.append(f"提前 {remind_before} 分钟提醒")
 
         if auto_plan_on_missing_time is not None:
@@ -1487,7 +1621,9 @@ class PlannerPlugin(Star):
         self.config["timeout_seconds"] = seconds
         await self.config.save_config()
 
-        yield event.plain_result(f"✅ 超时时间已设置为 {seconds} 秒")
+        yield event.plain_result(
+            f"✅ 超时时间已设置为 {self._format_timeout_text(seconds)}"
+        )
 
     # ========== 事件监听器 - 处理多轮对话 ==========
 
@@ -1517,7 +1653,7 @@ class PlannerPlugin(Star):
             if elapsed > self._PENDING_TIMEOUT_SECONDS:
                 del self._pending_tasks[session_id]
                 yield event.plain_result(
-                    "⏰ 抱歉，上次的问题已超时（超过2分钟），已自动取消。\n"
+                    f"⏰ 抱歉，上次的问题已超时（超过{self._format_timeout_text(self._PENDING_TIMEOUT_SECONDS)}），已自动取消。\n"
                     "如需继续，请重新发送任务指令。"
                 )
                 event.stop_event()
@@ -1682,7 +1818,7 @@ class PlannerPlugin(Star):
                 duration_minutes=duration,
                 status="pending",
                 remind_before=await self.learning_service.get_remind_preference(
-                    task_name
+                    task_name, fallback_minutes=self._default_remind_before
                 ),
                 repeat=repeat,
                 created_at=datetime.now(),
@@ -1718,6 +1854,18 @@ class PlannerPlugin(Star):
             else:
                 del self._pending_tasks[session_id]
                 yield event.plain_result("已取消创建任务")
+
+        elif step == "awaiting_learning_reset_confirm":
+            if user_input.strip() == "确认重置":
+                result = await self.learning_service.reset_learning_data(scope="all")
+                del self._pending_tasks[session_id]
+                yield event.plain_result(
+                    "✅ 已重置全部学习数据。\n"
+                    f"{self._format_learning_change(result['before'], result['after'])}"
+                )
+            else:
+                del self._pending_tasks[session_id]
+                yield event.plain_result("已取消重置学习数据。")
 
         # 停止事件传播
         event.stop_event()
