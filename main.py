@@ -63,7 +63,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   • create_planner_task("明天上午9点开会1小时")
   • list_planner_tasks("本周")
 """,
-    "1.0.7",
+    "1.0.8",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
