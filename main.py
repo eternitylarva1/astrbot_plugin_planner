@@ -102,6 +102,22 @@ class PlannerPlugin(Star):
             return tasks
         return [t for t in tasks if t.session_origin == session_origin]
 
+    @staticmethod
+    def _is_bot_self_message(event: AstrMessageEvent) -> bool:
+        """判断是否为机器人自身消息，避免把 bot 输出当成用户回复。"""
+        # 兼容不同平台/适配器字段命名
+        for flag_attr in ("is_self", "from_self", "self_message"):
+            flag = getattr(event, flag_attr, None)
+            if isinstance(flag, bool) and flag:
+                return True
+
+        sender_id = getattr(event, "sender_id", None) or getattr(event, "user_id", None)
+        self_id = getattr(event, "self_id", None) or getattr(event, "bot_id", None)
+        if sender_id is not None and self_id is not None and str(sender_id) == str(self_id):
+            return True
+
+        return False
+
     async def _get_session_pending_tasks(self, session_origin: str) -> List[Task]:
         """获取当前会话的待办任务。"""
         pending_tasks = await self.task_service.get_pending_tasks()
@@ -818,12 +834,20 @@ class PlannerPlugin(Star):
 
     @filter.llm_tool(name="create_planner_task")
     async def create_planner_task(
-        self, event: AstrMessageEvent, description: str
+        self,
+        event: AstrMessageEvent,
+        description: Optional[str] = None,
+        task_name: Optional[str] = None,
+        task_time: Optional[str] = None,
+        duration: Optional[str] = None,
+        duration_minutes: Optional[int] = None,
+        repeat: Optional[str] = None,
     ) -> str:
         """创建计划任务。
 
         当用户想要安排一个任务时调用此工具，一次性完成创建。
-        需要同时提供：任务名称、时间（如"明天下午3点"、"现在"）、时长（如"2小时"）。
+        推荐优先使用结构化参数：task_name / task_time / duration_minutes（或 duration）。
+        也支持仅传 description 让插件自行解析。
 
         支持的时间表达：今天、明天、下周三、下午3点、15:30、现在、立刻 等。
         支持的时长表达：2小时、30分钟、1小时 等。
@@ -832,30 +856,44 @@ class PlannerPlugin(Star):
         请告知用户需要补充哪些信息。也可以让用户使用 /计划 命令进行交互式创建。
 
         Args:
-            description(string): 任务描述，必须包含任务名称、时间和时长。
+            description(string): 可选。自然语言任务描述，包含任务名称、时间和时长。
                 例如："明天下午3点写代码2小时"、"现在做毕业设计4小时"。
-                如果信息不完整，请告知用户补充。
+            task_name(string): 可选。任务名称，例如"志愿服务"。
+            task_time(string): 可选。时间文本，例如"3月28号晚上5点"。
+            duration(string): 可选。时长文本，例如"2小时"、"90分钟"、"2-3小时"。
+            duration_minutes(int): 可选。时长分钟数（优先级高于 duration）。
+            repeat(string): 可选。循环类型，如 daily/weekly/monthly/workdays。
         """
-        user_input = description.strip()
-        if not user_input:
-            return "请告诉我你要安排什么任务~"
+        user_input = (description or "").strip()
+        parsed = TimeParser.parse_task_info(user_input) if user_input else {
+            "task_name": "",
+            "datetime": None,
+            "duration": None,
+            "repeat": None,
+        }
 
-        # 解析任务信息
-        parsed = TimeParser.parse_task_info(user_input)
-        task_name = parsed["task_name"]
-        task_time = parsed["datetime"]
-        duration = parsed["duration"]
-        repeat = parsed["repeat"]
+        merged_task_name = (task_name or "").strip() or parsed["task_name"]
+        merged_task_time = (
+            TimeParser.parse_datetime(task_time) if task_time else parsed["datetime"]
+        )
+        merged_duration = (
+            int(duration_minutes)
+            if duration_minutes is not None
+            else (TimeParser.parse_duration(duration) if duration else parsed["duration"])
+        )
+        merged_repeat = repeat or parsed["repeat"]
 
         # 没有解析出任务名 → 询问
-        if not task_name:
+        if not merged_task_name:
             return "请告诉我任务名称是什么？"
 
         # 清理任务名中的模糊词
-        task_name = re.sub(r"(大概|左右|估计|差不多|些许)\s*", "", task_name).strip()
+        merged_task_name = re.sub(
+            r"(大概|左右|估计|差不多|些许)\s*", "", merged_task_name
+        ).strip()
 
         # 缺少时长 → 提示用户
-        if not duration:
+        if not merged_duration:
             fuzzy_duration = None
             # 尝试提取模糊时长 "大概1小时"
             m = re.search(r"([+-]?\d+\.?\d*)\s*(?:小时|分钟|秒钟)", user_input)
@@ -865,23 +903,23 @@ class PlannerPlugin(Star):
                 fuzzy_duration = int(value * 60) if "小时" in kw_text else int(value)
             if fuzzy_duration:
                 return (
-                    f"📝 任务「{task_name}」\n\n"
+                    f"📝 任务「{merged_task_name}」\n\n"
                     f"你说的大概是 {TimeParser.format_duration(fuzzy_duration)}，具体是多少呢？\n"
                     f"例如：45分钟、1小时\n\n"
                     f"请补充完整后再次调用此工具，或使用 /计划 命令进行交互式创建。"
                 )
             return (
-                f"📝 任务「{task_name}」\n\n"
+                f"📝 任务「{merged_task_name}」\n\n"
                 f"请告诉我预计需要多长时间？\n"
                 f"例如：1小时、30分钟\n\n"
                 f"请补充完整后再次调用此工具，或使用 /计划 命令进行交互式创建。"
             )
 
         # 缺少时间 → 提示用户
-        if not task_time:
+        if not merged_task_time:
             return (
-                f"📝 任务「{task_name}」\n"
-                f"⏱️ 时长：{TimeParser.format_duration(duration)}\n\n"
+                f"📝 任务「{merged_task_name}」\n"
+                f"⏱️ 时长：{TimeParser.format_duration(merged_duration)}\n\n"
                 f"请告诉我安排在什么时间？\n"
                 f"例如：今天下午3点、明天上午9点、下周三\n\n"
                 f"请补充完整后再次调用此工具，或使用 /计划 命令进行交互式创建。"
@@ -891,14 +929,19 @@ class PlannerPlugin(Star):
             kw in user_input for kw in ["自动顺延", "下一个空档", "下个空档", "顺延"]
         )
         if auto_shift:
-            conflicts = await self.task_service.check_conflict(task_time, duration)
+            conflicts = await self.task_service.check_conflict(merged_task_time, merged_duration)
             if conflicts:
-                task_time = await self.task_service.get_next_available_slot(
-                    task_time.date(), duration
+                merged_task_time = await self.task_service.get_next_available_slot(
+                    merged_task_time.date(), merged_duration
                 )
 
         prep = await self._prepare_task_creation(
-            event, task_name, task_time, duration, repeat, interactive=False
+            event,
+            merged_task_name,
+            merged_task_time,
+            merged_duration,
+            merged_repeat,
+            interactive=False,
         )
         if not prep["ok"]:
             return prep["message"]
@@ -1109,6 +1152,9 @@ class PlannerPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.PRIVATE_MESSAGE)
     async def on_pending_message(self, event: AstrMessageEvent):
         """处理待确认的消息"""
+        if self._is_bot_self_message(event):
+            return
+
         session_id = event.unified_msg_origin
         user_input = event.message_str.strip()
 
