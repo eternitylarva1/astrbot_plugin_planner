@@ -351,7 +351,7 @@ class Visualizer:
             left: 50%;
             transform: translateX(-50%);
             width: 2px;
-            height: calc(100% + {item_margin_bottom}px);
+            height: calc(100% + {item_gap}px);
             background: #eceff5;
         }}
         .timeline-item:last-child .timeline-dot::after {{
