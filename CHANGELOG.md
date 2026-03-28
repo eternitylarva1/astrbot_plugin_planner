@@ -2,6 +2,28 @@
 
 本文档记录 `astrbot_plugin_planner` 的功能更新。
 
+## [1.2.1] - 2026-03-28
+
+### Fixed
+- 修复待办列表与任务列表不一致问题：`list_planner_tasks` 和 `_resolve_pending_task` 现在使用相同的任务列表过滤逻辑
+  - 修改 `_resolve_pending_task` 方法，添加 `date_text` 参数
+  - 新增 `_get_tasks_by_date_text` 方法，与 `list_planner_tasks` 保持一致
+  - 修改 `complete_planner_task` 和 `cancel_planner_task` LLM工具，传递 `date_text` 参数
+- 修复批量创建任务时时间识别问题：批量任务之间现在有时间关联
+  - 修改 `_plan_by_intention` 方法，添加 `last_task_end_time` 变量
+  - 后续任务如果没有明确时间，从前一个任务的结束时间开始安排
+  - 支持混合有时间和无时间的任务情况
+- 修复批量处理功能缺失：新增批量完成/取消任务功能
+  - 新增 `_parse_batch_targets` 静态方法，支持 "1,2,3" 和 "1-3" 格式
+  - 修改 `complete_planner_task` 支持批量完成任务
+  - 修改 `cancel_planner_task` 支持批量取消任务
+
+### Added
+- 新增测试程序 `tests/test_planner_fixes.py`：不依赖 AstrBot 框架的独立测试
+  - 测试待办列表与任务列表一致性
+  - 测试批量任务时间关联
+  - 测试批量编号解析
+
 ## [1.2.0] - 2026-03-28
 
 ### Added
