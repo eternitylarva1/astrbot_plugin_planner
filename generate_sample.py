@@ -23,13 +23,15 @@ def generate_sample():
     task_rows_html = ""
     for i, task in enumerate(tasks_data):
         status_icon = "✅" if task["status"] == "done" else "🔲"
+        is_done = task["status"] == "done"
+        done_class = " done" if is_done else ""
         task_rows_html += f"""
-            <div class="timeline-item">
+            <div class="timeline-item{done_class}">
                 <div class="timeline-time">
                     <div class="time-start">{task['time']}</div>
                     <div class="time-end">{task['end']}</div>
                 </div>
-                <div class="timeline-card">
+                <div class="timeline-card{done_class}">
                     <div class="task-content">
                         <span class="task-emoji">📌</span>
                         <span class="task-name">{task['name']}</span>
@@ -221,6 +223,43 @@ def generate_sample():
         .task-status {{
             font-size: {status_font_size}px;
             filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }}
+        /* 已完成任务样式：变暗、缩小 */
+        .timeline-item.done {{
+            flex: 0.6;
+        }}
+        .timeline-item.done .timeline-time {{
+            opacity: 0.5;
+            filter: grayscale(0.3);
+        }}
+        .timeline-item.done .timeline-time > div {{
+            font-size: 0.7em;
+        }}
+        .timeline-item.done .timeline-dot {{
+            opacity: 0.4;
+            filter: grayscale(0.5);
+        }}
+        .timeline-card.done {{
+            opacity: 0.5;
+            filter: grayscale(0.3);
+            transform: scale(0.95);
+        }}
+        .timeline-item.done .task-emoji {{
+            opacity: 0.6;
+            filter: grayscale(0.3);
+        }}
+        .timeline-item.done .task-name {{
+            opacity: 0.6;
+            font-size: 0.85em;
+            text-decoration: line-through;
+        }}
+        .timeline-item.done .task-duration {{
+            opacity: 0.5;
+            font-size: 0.8em;
+        }}
+        .timeline-item.done .task-status {{
+            opacity: 0.7;
+            font-size: 0.85em;
         }}
         .stats {{
             margin-top: 20px;
