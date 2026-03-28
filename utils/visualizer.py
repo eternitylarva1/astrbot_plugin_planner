@@ -323,8 +323,8 @@ class Visualizer:
             position: relative;
         }}
         .timeline-time {{
-            width: 98px;
-            text-align: right;
+            width: 61.8%;
+            text-align: center;
             font-size: {time_font_size}px;
             color: #374151;
             font-weight: 700;
