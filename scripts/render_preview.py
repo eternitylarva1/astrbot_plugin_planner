@@ -59,7 +59,7 @@ async def _export_png(html_path: Path, png_path: Path) -> None:
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch()
-        page = await browser.new_page(viewport={"width": 1400, "height": 1800})
+        page = await browser.new_page(viewport={"width": 1400, "height": 2800})
         await page.goto(html_path.resolve().as_uri())
         await page.screenshot(path=str(png_path), full_page=True)
         await browser.close()
