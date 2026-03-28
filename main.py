@@ -602,7 +602,8 @@ class PlannerPlugin(Star):
                 tasks_by_date[d] = tasks
 
             html = self.visualizer.render_weekly_schedule(tasks_by_date)
-            image_url = await self.html_render(html, {})
+            # 传递 viewport 参数确保 1:2 比例（宽度:高度）
+            image_url = await self.html_render(html, {"viewport": {"width": 1400, "height": 2800}})
             yield event.image_result(image_url)
             return
         elif "下周" in user_input:
@@ -614,7 +615,8 @@ class PlannerPlugin(Star):
                 tasks_by_date[d] = tasks
 
             html = self.visualizer.render_weekly_schedule(tasks_by_date)
-            image_url = await self.html_render(html, {})
+            # 传递 viewport 参数确保 1:2 比例（宽度:高度）
+            image_url = await self.html_render(html, {"viewport": {"width": 1400, "height": 2800}})
             yield event.image_result(image_url)
             return
         elif any(
@@ -648,7 +650,8 @@ class PlannerPlugin(Star):
         html = self.visualizer.render_daily_schedule(
             tasks, target_date, style=chart_style
         )
-        image_url = await self.html_render(html, {})
+        # 传递 viewport 参数确保 1:2 比例（宽度:高度）
+        image_url = await self.html_render(html, {"viewport": {"width": 1400, "height": 2800}})
         yield event.image_result(image_url)
 
     # ========== 基础指令 ==========
