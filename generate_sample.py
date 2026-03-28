@@ -50,8 +50,8 @@ def generate_sample():
     if task_count <= 6:
         item_gap = 20
         card_padding = "24px 20px"
-        time_font_size = 26
-        time_end_font_size = 18
+        time_font_size = 80
+        time_end_font_size = 50
         emoji_font_size = 34
         name_font_size = 38
         duration_font_size = 22
