@@ -337,9 +337,9 @@ class Visualizer:
         .timeline-time {{
             width: 20%;
             text-align: center;
-            color: #64748b;
-            font-weight: 600;
-            background: #f1f5f9;
+            color: #1e293b;
+            font-weight: 700;
+            background: #e2e8f0;
             border-radius: 16px;
             padding: 16px 12px;
             display: flex;
@@ -351,8 +351,8 @@ class Visualizer:
         .timeline-time-end {{
             margin-top: 4px;
             font-size: {time_end_font_size}px;
-            color: #94a3b8;
-            font-weight: 500;
+            color: #475569;
+            font-weight: 600;
         }}
         .timeline-dot {{
             width: {dot_size}px;
