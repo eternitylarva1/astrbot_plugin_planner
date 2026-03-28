@@ -162,20 +162,70 @@ class PlannerPlugin(Star):
         """获取当前会话的待办任务。"""
         pending_tasks = await self.task_service.get_pending_tasks()
         return self._filter_tasks_by_session(pending_tasks, session_origin)
+    
+    @staticmethod
+    def _parse_batch_targets(target: str) -> List[int]:
+        """解析批量目标编号，支持 "1,2,3" 和 "1-3" 格式。
+        
+        Args:
+            target: 目标字符串，如 "1,2,3" 或 "1-3" 或 "1,3-5"
+        
+        Returns:
+            编号列表（从1开始）
+        """
+        if not target:
+            return []
+        
+        indices = set()
+        parts = target.split(",")
+        
+        for part in parts:
+            part = part.strip()
+            if "-" in part:
+                # 处理范围，如 "1-3"
+                try:
+                    start, end = part.split("-")
+                    start_idx = int(start.strip())
+                    end_idx = int(end.strip())
+                    # 确保范围有效
+                    if start_idx > 0 and end_idx > 0:
+                        for i in range(min(start_idx, end_idx), max(start_idx, end_idx) + 1):
+                            if i > 0:
+                                indices.add(i)
+                except (ValueError, AttributeError):
+                    continue
+            else:
+                # 处理单个编号
+                try:
+                    idx = int(part)
+                    if idx > 0:
+                        indices.add(idx)
+                except ValueError:
+                    continue
+        
+        return sorted(indices)
 
     async def _resolve_pending_task(
-        self, session_origin: str, target: Optional[str]
+        self, session_origin: str, target: Optional[str], date_text: Optional[str] = None
     ) -> Optional[Task]:
-        """按编号/名称解析当前会话待办任务。"""
-        pending_tasks = await self._get_session_pending_tasks(session_origin)
+        """按编号/名称解析当前会话待办任务。
+        
+        Args:
+            session_origin: 会话来源
+            target: 任务编号或名称
+            date_text: 日期范围（如"今天/明天/本周/下周"），用于过滤任务列表
+        """
+        # 根据 date_text 获取任务列表
+        if date_text:
+            pending_tasks = await self._get_tasks_by_date_text(session_origin, date_text)
+        else:
+            pending_tasks = await self._get_session_pending_tasks(session_origin)
+        
         if not pending_tasks:
             return None
 
         if not target:
-            today_tasks = [
-                t for t in pending_tasks if t.start_time and t.start_time.date() == date.today()
-            ]
-            return today_tasks[0] if today_tasks else pending_tasks[0]
+            return pending_tasks[0]
 
         # 尝试编号
         try:
@@ -192,6 +242,44 @@ class PlannerPlugin(Star):
             return None
         matched.sort(key=lambda x: len(x.name))
         return matched[0]
+    
+    async def _get_tasks_by_date_text(
+        self, session_origin: str, date_text: str
+    ) -> List[Task]:
+        """根据日期文本获取任务列表（与 list_planner_tasks 保持一致）。
+        
+        Args:
+            session_origin: 会话来源
+            date_text: 日期范围（如"今天/明天/本周/下周"）
+        
+        Returns:
+            任务列表
+        """
+        text = date_text.strip().lower()
+        today = date.today()
+
+        if "本周" in text:
+            days = [today + timedelta(days=i) for i in range(7)]
+        elif "下周" in text:
+            days = [today + timedelta(days=i) for i in range(7, 14)]
+        elif "明天" in text:
+            days = [today + timedelta(days=1)]
+        elif "后天" in text:
+            days = [today + timedelta(days=2)]
+        else:
+            days = [today]
+
+        all_tasks: List[Task] = []
+        for d in days:
+            daily_tasks = await self.task_service.get_tasks_by_date(d)
+            daily_tasks = self._filter_tasks_by_session(
+                daily_tasks, session_origin
+            )
+            daily_tasks = [t for t in daily_tasks if t.status == "pending"]
+            all_tasks.extend(daily_tasks)
+
+        all_tasks.sort(key=lambda t: t.start_time or datetime.max)
+        return all_tasks
 
     async def _prepare_task_creation(
         self,
@@ -356,7 +444,10 @@ class PlannerPlugin(Star):
     async def _plan_by_intention(
         self, event: AstrMessageEvent, intention: str, horizon_days: int = 7, max_tasks: int = 5
     ) -> List[Dict[str, Any]]:
-        """根据用户模糊意图自动生成计划建议（基于学习习惯 + 冲突检查）。"""
+        """根据用户模糊意图自动生成计划建议（基于学习习惯 + 冲突检查）。
+        
+        批量任务之间有时间关联：后续任务会从前一个任务的结束时间开始安排。
+        """
         final_max_tasks = min(max_tasks, max(self._suggestion_count, 1))
         names = self._extract_plan_task_names(intention)[:final_max_tasks]
         if not names:
@@ -366,6 +457,8 @@ class PlannerPlugin(Star):
         now_dt = datetime.now()
         suggestions: List[Dict[str, Any]] = []
         daily_minutes_used: Dict[date, int] = {}
+        last_task_end_time = None  # 跟踪上一个任务的结束时间
+        
         for idx, name in enumerate(names):
             cleaned_name = self._cleanup_planning_phrase(name) or name
             parsed = TimeParser.parse_task_info(name)
@@ -389,37 +482,67 @@ class PlannerPlugin(Star):
                 else:
                     duration = self._ai_default_duration_minutes
 
-            candidate_slots = ["morning", "afternoon", "evening"]
-            slot_scores = {}
-            for candidate in candidate_slots:
-                slot_scores[candidate] = await self.learning_service.score_slot(
-                    parsed_name,
-                    candidate,
-                    habit_weight=self._habit_weight,
-                    habit_enabled=self._habit_planning_enabled,
-                    confidence_threshold=self._learning_confidence_threshold,
-                )
-            slot = max(candidate_slots, key=lambda s: slot_scores.get(s, -999.0))
-            target_day = today + timedelta(days=min(idx, max(horizon_days - 1, 0)))
-            used_minutes = daily_minutes_used.get(target_day, 0)
-            if used_minutes + duration > self._max_daily_minutes:
-                target_day = target_day + timedelta(days=1)
-            base_time = parsed.get("datetime") or datetime.combine(
-                target_day, self._slot_to_time(slot)
-            )
+            # 确定任务时间
+            base_time = parsed.get("datetime")
+            
+            if base_time:
+                # 任务有明确时间，使用该时间
+                pass
+            elif last_task_end_time:
+                # 没有明确时间，从上一个任务的结束时间开始
+                base_time = last_task_end_time
+                # 检查冲突，找到下一个可用槽
+                conflicts = await self.task_service.check_conflict(base_time, duration)
+                if conflicts:
+                    base_time = await self.task_service.get_next_available_slot(
+                        base_time.date(), duration
+                    )
+            else:
+                # 第一个任务且没有明确时间，使用默认逻辑
+                candidate_slots = ["morning", "afternoon", "evening"]
+                slot_scores = {}
+                for candidate in candidate_slots:
+                    slot_scores[candidate] = await self.learning_service.score_slot(
+                        parsed_name,
+                        candidate,
+                        habit_weight=self._habit_weight,
+                        habit_enabled=self._habit_planning_enabled,
+                        confidence_threshold=self._learning_confidence_threshold,
+                    )
+                slot = max(candidate_slots, key=lambda s: slot_scores.get(s, -999.0))
+                target_day = today + timedelta(days=min(idx, max(horizon_days - 1, 0)))
+                used_minutes = daily_minutes_used.get(target_day, 0)
+                if used_minutes + duration > self._max_daily_minutes:
+                    target_day = target_day + timedelta(days=1)
+                base_time = datetime.combine(target_day, self._slot_to_time(slot))
+            
+            # 避免过去时间
             if self._avoid_past_time and base_time <= now_dt:
                 base_time = datetime.combine(
-                    target_day + timedelta(days=1), self._slot_to_time(slot)
+                    base_time.date() + timedelta(days=1),
+                    base_time.time()
                 )
+            
+            # 检查冲突并调整
             conflicts = await self.task_service.check_conflict(base_time, duration)
             if conflicts:
                 base_time = await self.task_service.get_next_available_slot(
-                    target_day, duration
+                    base_time.date(), duration
                 )
                 if self._avoid_past_time and base_time <= now_dt:
                     base_time = await self.task_service.get_next_available_slot(
-                        target_day + timedelta(days=1), duration
+                        base_time.date() + timedelta(days=1), duration
                     )
+            
+            # 确定时段（用于显示）
+            hour = base_time.hour
+            if hour < 12:
+                slot = "morning"
+            elif hour < 18:
+                slot = "afternoon"
+            else:
+                slot = "evening"
+            
             suggestions.append(
                 {
                     "task_name": parsed_name,
@@ -429,6 +552,11 @@ class PlannerPlugin(Star):
                     "confidence": round(confidence, 2),
                 }
             )
+            
+            # 更新上一个任务的结束时间
+            last_task_end_time = base_time + timedelta(minutes=duration)
+            
+            # 更新每日使用时长
             day_key = base_time.date()
             daily_minutes_used[day_key] = daily_minutes_used.get(day_key, 0) + duration
         return suggestions
@@ -1678,14 +1806,60 @@ class PlannerPlugin(Star):
 
     @filter.llm_tool(name="complete_planner_task")
     async def complete_planner_task(
-        self, event: AstrMessageEvent, target: Optional[str] = None
+        self, event: AstrMessageEvent, target: Optional[str] = None, date_text: Optional[str] = None
     ) -> str:
-        """完成当前会话中的任务（支持编号或名称）。
+        """完成当前会话中的任务（支持编号、名称或批量编号）。
 
         Args:
-            target(string): 任务编号（如"1"）或任务名关键字；为空时默认完成最近一项。
+            target(string): 任务编号（如"1"）、任务名关键字，或批量编号（如"1,2,3"或"1-3"）；为空时默认完成最近一项。
+            date_text(string): 日期范围（如"今天/明天/本周/下周"），用于指定任务列表范围。
         """
-        task = await self._resolve_pending_task(event.unified_msg_origin, target)
+        if not target:
+            # 默认完成第一个任务
+            task = await self._resolve_pending_task(event.unified_msg_origin, None, date_text)
+            if not task:
+                return "未找到可完成的任务。请先用 list_planner_tasks 查看任务编号。"
+            completed_task = await self.task_service.complete_task(task.id)
+            await self.reminder_service.cancel_reminder(task.id)
+            if completed_task and completed_task.completed_at and completed_task.start_time:
+                actual_duration = int(
+                    (completed_task.completed_at - completed_task.start_time).total_seconds()
+                    / 60
+                )
+                if actual_duration > 0:
+                    await self.learning_service.record_duration(task.name, actual_duration)
+            return f"✅ 已完成：{task.name}"
+        
+        # 检查是否为批量编号
+        batch_indices = self._parse_batch_targets(target)
+        if batch_indices:
+            # 批量完成
+            if date_text:
+                pending_tasks = await self._get_tasks_by_date_text(event.unified_msg_origin, date_text)
+            else:
+                pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
+            
+            completed = []
+            for idx in batch_indices:
+                if 0 < idx <= len(pending_tasks):
+                    task = pending_tasks[idx - 1]
+                    completed_task = await self.task_service.complete_task(task.id)
+                    await self.reminder_service.cancel_reminder(task.id)
+                    if completed_task and completed_task.completed_at and completed_task.start_time:
+                        actual_duration = int(
+                            (completed_task.completed_at - completed_task.start_time).total_seconds()
+                            / 60
+                        )
+                        if actual_duration > 0:
+                            await self.learning_service.record_duration(task.name, actual_duration)
+                    completed.append(task.name)
+            
+            if not completed:
+                return "未找到可完成的任务。请先用 list_planner_tasks 查看任务编号。"
+            return f"✅ 已完成 {len(completed)} 个任务：{', '.join(completed)}"
+        
+        # 单个任务
+        task = await self._resolve_pending_task(event.unified_msg_origin, target, date_text)
         if not task:
             return "未找到可完成的任务。请先用 list_planner_tasks 查看任务编号。"
 
@@ -1703,11 +1877,12 @@ class PlannerPlugin(Star):
         return f"✅ 已完成：{task.name}"
 
     @filter.llm_tool(name="cancel_planner_task")
-    async def cancel_planner_task(self, event: AstrMessageEvent, target: str) -> str:
-        """取消当前会话中的任务（支持编号、名称或 all）。
+    async def cancel_planner_task(self, event: AstrMessageEvent, target: str, date_text: Optional[str] = None) -> str:
+        """取消当前会话中的任务（支持编号、名称、批量编号或 all）。
 
         Args:
-            target(string): 任务编号、任务名关键字，或 all/-1（取消当前会话全部待办）。
+            target(string): 任务编号、任务名关键字、批量编号（如"1,2,3"或"1-3"），或 all/-1（取消当前会话全部待办）。
+            date_text(string): 日期范围（如"今天/明天/本周/下周"），用于指定任务列表范围。
         """
         target = (target or "").strip()
         if not target:
@@ -1722,7 +1897,29 @@ class PlannerPlugin(Star):
                 await self.reminder_service.cancel_reminder(task.id)
             return f"❌ 已取消当前会话全部待办任务，共 {len(pending_tasks)} 项。"
 
-        task = await self._resolve_pending_task(event.unified_msg_origin, target)
+        # 检查是否为批量编号
+        batch_indices = self._parse_batch_targets(target)
+        if batch_indices:
+            # 批量取消
+            if date_text:
+                pending_tasks = await self._get_tasks_by_date_text(event.unified_msg_origin, date_text)
+            else:
+                pending_tasks = await self._get_session_pending_tasks(event.unified_msg_origin)
+            
+            cancelled = []
+            for idx in batch_indices:
+                if 0 < idx <= len(pending_tasks):
+                    task = pending_tasks[idx - 1]
+                    await self.task_service.cancel_task(task.id)
+                    await self.reminder_service.cancel_reminder(task.id)
+                    cancelled.append(task.name)
+            
+            if not cancelled:
+                return "未找到可取消的任务。请先用 list_planner_tasks 查看任务编号。"
+            return f"❌ 已取消 {len(cancelled)} 个任务：{', '.join(cancelled)}"
+
+        # 单个任务
+        task = await self._resolve_pending_task(event.unified_msg_origin, target, date_text)
         if not task:
             return "未找到可取消的任务。请先用 list_planner_tasks 查看任务编号。"
 
