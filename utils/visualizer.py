@@ -222,8 +222,8 @@ class Visualizer:
             # 大尺寸：5-6个任务填满页面
             item_gap = 20
             card_padding = "24px 20px"
-            time_font_size = 80
-            time_end_font_size = 50
+            time_font_size = 68
+            time_end_font_size = 42
             emoji_font_size = 34
             name_font_size = 38
             duration_font_size = 22
@@ -234,8 +234,8 @@ class Visualizer:
             # 中等尺寸：7-10个任务
             item_gap = 16
             card_padding = "20px 18px"
-            time_font_size = 60
-            time_end_font_size = 40
+            time_font_size = 51
+            time_end_font_size = 34
             emoji_font_size = 32
             name_font_size = 34
             duration_font_size = 20
@@ -246,8 +246,8 @@ class Visualizer:
             # 紧凑尺寸：超过10个任务
             item_gap = 12
             card_padding = "16px 16px"
-            time_font_size = 45
-            time_end_font_size = 30
+            time_font_size = 38
+            time_end_font_size = 25
             emoji_font_size = 30
             name_font_size = 30
             duration_font_size = 18
@@ -329,6 +329,14 @@ class Visualizer:
             color: #374151;
             font-weight: 700;
             padding-top: 4px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: #f9fafb;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }}
         .timeline-time-end {{
             margin-top: 4px;

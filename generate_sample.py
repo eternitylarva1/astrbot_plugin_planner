@@ -50,8 +50,8 @@ def generate_sample():
     if task_count <= 6:
         item_gap = 20
         card_padding = "24px 20px"
-        time_font_size = 80
-        time_end_font_size = 50
+        time_font_size = 68
+        time_end_font_size = 42
         emoji_font_size = 34
         name_font_size = 38
         duration_font_size = 22
@@ -134,6 +134,14 @@ def generate_sample():
             color: #374151;
             font-weight: 700;
             padding-top: 4px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: #f9fafb;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }}
         .timeline-time-end {{
             margin-top: 4px;
