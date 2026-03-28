@@ -220,43 +220,40 @@ class Visualizer:
         task_count = len(sorted_tasks)
         if task_count <= 6:
             # 大尺寸：5-6个任务填满页面
-            item_margin_bottom = 40
-            card_padding = "30px 24px"
-            time_font_size = 28
-            time_end_font_size = 20
-            emoji_font_size = 38
-            name_font_size = 42
-            duration_font_size = 24
-            status_font_size = 32
-            dot_size = 18
-            dot_border = 4
-            tasks_justify = "space-between"
-        elif task_count <= 10:
-            # 中等尺寸：7-10个任务
-            item_margin_bottom = 24
-            card_padding = "22px 20px"
+            item_gap = 20
+            card_padding = "24px 20px"
             time_font_size = 26
-            time_end_font_size = 19
-            emoji_font_size = 34
-            name_font_size = 36
-            duration_font_size = 22
-            status_font_size = 28
-            dot_size = 17
-            dot_border = 3
-            tasks_justify = "flex-start"
-        else:
-            # 紧凑尺寸：超过10个任务
-            item_margin_bottom = 16
-            card_padding = "18px 20px"
-            time_font_size = 24
             time_end_font_size = 18
-            emoji_font_size = 30
-            name_font_size = 32
-            duration_font_size = 20
-            status_font_size = 26
+            emoji_font_size = 34
+            name_font_size = 38
+            duration_font_size = 22
+            status_font_size = 30
             dot_size = 16
             dot_border = 3
-            tasks_justify = "flex-start"
+        elif task_count <= 10:
+            # 中等尺寸：7-10个任务
+            item_gap = 16
+            card_padding = "20px 18px"
+            time_font_size = 24
+            time_end_font_size = 17
+            emoji_font_size = 32
+            name_font_size = 34
+            duration_font_size = 20
+            status_font_size = 28
+            dot_size = 15
+            dot_border = 3
+        else:
+            # 紧凑尺寸：超过10个任务
+            item_gap = 12
+            card_padding = "16px 16px"
+            time_font_size = 22
+            time_end_font_size = 16
+            emoji_font_size = 30
+            name_font_size = 30
+            duration_font_size = 18
+            status_font_size = 26
+            dot_size = 14
+            dot_border = 3
 
         return f"""<!DOCTYPE html>
 <html>
@@ -280,6 +277,7 @@ class Visualizer:
             box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
             width: min(96vw, 900px);
             min-height: min(96vh, 1680px);
+            aspect-ratio: 1 / 2;
             margin: 0 auto;
             color: #1f2937;
             display: flex;
@@ -315,13 +313,13 @@ class Visualizer:
             padding-top: 4px;
             display: flex;
             flex-direction: column;
-            justify-content: {tasks_justify};
+            gap: {item_gap}px;
         }}
         .timeline-item {{
             display: flex;
             align-items: stretch;
             gap: 14px;
-            margin-bottom: {item_margin_bottom}px;
+            flex: 1;
             position: relative;
         }}
         .timeline-time {{
@@ -361,8 +359,11 @@ class Visualizer:
         }}
         .timeline-card {{
             flex: 1;
+            height: 100%;
             padding: {card_padding};
             border-radius: 14px;
+            display: flex;
+            align-items: center;
         }}
         .task-content {{
             display: flex;
