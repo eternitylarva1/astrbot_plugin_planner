@@ -216,6 +216,48 @@ class Visualizer:
         weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
         weekday = weekdays[target_date.weekday()]
 
+        # 根据任务数量动态调整样式
+        task_count = len(sorted_tasks)
+        if task_count <= 6:
+            # 大尺寸：5-6个任务填满页面
+            item_margin_bottom = 40
+            card_padding = "30px 24px"
+            time_font_size = 28
+            time_end_font_size = 20
+            emoji_font_size = 38
+            name_font_size = 42
+            duration_font_size = 24
+            status_font_size = 32
+            dot_size = 18
+            dot_border = 4
+            tasks_justify = "space-between"
+        elif task_count <= 10:
+            # 中等尺寸：7-10个任务
+            item_margin_bottom = 24
+            card_padding = "22px 20px"
+            time_font_size = 26
+            time_end_font_size = 19
+            emoji_font_size = 34
+            name_font_size = 36
+            duration_font_size = 22
+            status_font_size = 28
+            dot_size = 17
+            dot_border = 3
+            tasks_justify = "flex-start"
+        else:
+            # 紧凑尺寸：超过10个任务
+            item_margin_bottom = 16
+            card_padding = "18px 20px"
+            time_font_size = 24
+            time_end_font_size = 18
+            emoji_font_size = 30
+            name_font_size = 32
+            duration_font_size = 20
+            status_font_size = 26
+            dot_size = 16
+            dot_border = 3
+            tasks_justify = "flex-start"
+
         return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -238,7 +280,6 @@ class Visualizer:
             box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
             width: min(96vw, 900px);
             min-height: min(96vh, 1680px);
-            aspect-ratio: 1 / 2;
             margin: 0 auto;
             color: #1f2937;
             display: flex;
@@ -272,44 +313,47 @@ class Visualizer:
             min-height: 0;
             flex: 1;
             padding-top: 4px;
+            display: flex;
+            flex-direction: column;
+            justify-content: {tasks_justify};
         }}
         .timeline-item {{
             display: flex;
             align-items: stretch;
             gap: 14px;
-            margin-bottom: 16px;
+            margin-bottom: {item_margin_bottom}px;
             position: relative;
         }}
         .timeline-time {{
             width: 98px;
             text-align: right;
-            font-size: 24px;
+            font-size: {time_font_size}px;
             color: #374151;
             font-weight: 700;
             padding-top: 4px;
         }}
         .timeline-time-end {{
             margin-top: 4px;
-            font-size: 18px;
+            font-size: {time_end_font_size}px;
             color: #999;
         }}
         .timeline-dot {{
-            width: 16px;
-            min-width: 16px;
+            width: {dot_size}px;
+            min-width: {dot_size}px;
             border-radius: 50%;
-            border: 3px solid #667eea;
+            border: {dot_border}px solid #667eea;
             position: relative;
             margin-top: 12px;
-            height: 16px;
+            height: {dot_size}px;
         }}
         .timeline-dot::after {{
             content: "";
             position: absolute;
-            top: 16px;
+            top: {dot_size}px;
             left: 50%;
             transform: translateX(-50%);
             width: 2px;
-            height: calc(100% + 28px);
+            height: calc(100% + {item_margin_bottom}px);
             background: #eceff5;
         }}
         .timeline-item:last-child .timeline-dot::after {{
@@ -317,7 +361,7 @@ class Visualizer:
         }}
         .timeline-card {{
             flex: 1;
-            padding: 18px 20px;
+            padding: {card_padding};
             border-radius: 14px;
         }}
         .task-content {{
@@ -326,16 +370,16 @@ class Visualizer:
             gap: 12px;
         }}
         .task-emoji {{
-            font-size: 30px;
+            font-size: {emoji_font_size}px;
         }}
         .task-name {{
-            font-size: 32px;
+            font-size: {name_font_size}px;
             color: #111827;
             font-weight: 700;
             flex: 1;
         }}
         .task-duration {{
-            font-size: 20px;
+            font-size: {duration_font_size}px;
             color: #374151;
             background: rgba(0,0,0,0.05);
             padding: 7px 14px;
@@ -343,7 +387,7 @@ class Visualizer:
             font-weight: 700;
         }}
         .task-status {{
-            font-size: 26px;
+            font-size: {status_font_size}px;
         }}
         .daily-card {{
             border-radius: 14px;
