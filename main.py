@@ -1642,9 +1642,9 @@ class PlannerPlugin(Star):
 
         return "✅ " + " | ".join(results)
 
-    @filter.command("更新插件", alias={"重载插件", "更新计划助手"})
+    @filter.command("更新插件", alias={"更新计划助手"})
     async def update_plugin(self, event: AstrMessageEvent) -> MessageEventResult:
-        """更新并热重载本插件"""
+        """从 Git 拉取最新代码（需手动重启 AstrBot 生效）"""
         yield event.plain_result("🔄 正在更新插件...")
 
         # 获取插件目录
@@ -1669,22 +1669,7 @@ class PlannerPlugin(Star):
                 yield event.plain_result("✅ 插件已是最新版本，无需更新")
                 return
 
-            # 调用 AstrBot 重载插件
-            try:
-                # 通过 context 获取 plugin_manager
-                if hasattr(self.context, "plugin_manager"):
-                    success, msg = await self.context.plugin_manager.reload("astrbot_plugin_planner")
-                    if success:
-                        yield event.plain_result(f"✅ 插件更新并重载成功！\n\n{output}")
-                    else:
-                        yield event.plain_result(f"⚠️ 插件已更新但重载失败：{msg}\n\n请手动重启 AstrBot")
-                elif hasattr(self.context, "reload_plugin"):
-                    await self.context.reload_plugin("astrbot_plugin_planner")
-                    yield event.plain_result(f"✅ 插件更新并重载成功！\n\n{output}")
-                else:
-                    yield event.plain_result(f"✅ 插件已更新（重载接口不可用，请手动重启 AstrBot）\n\n{output}")
-            except Exception as e:
-                yield event.plain_result(f"✅ 插件已更新（重载失败：{e}，请手动重启 AstrBot）\n\n{output}")
+            yield event.plain_result(f"✅ 插件代码已更新，请手动重启 AstrBot 生效\n\n{output}")
 
         except subprocess.TimeoutExpired:
             yield event.plain_result("❌ 更新超时，请检查网络连接")
