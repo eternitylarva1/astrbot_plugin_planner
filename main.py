@@ -650,9 +650,11 @@ class PlannerPlugin(Star):
         html = self.visualizer.render_daily_schedule(
             tasks, target_date, style=chart_style
         )
-        # t2i 服务使用默认 viewport (1280x720)，CSS 已设置固定尺寸 1400x2800
-        logger.info(f"渲染图表，任务数: {len(tasks)}，目标尺寸: 1400x2800")
-        image_url = await self.html_render(html, {})
+        # 使用 clip 裁剪到 1:2 比例 (720x1440)
+        # t2i 服务默认 viewport (1280x720) 会渲染出 1280x1440，用 clip 裁剪
+        options = {"clip": {"x": 0, "y": 0, "width": 720, "height": 1440}}
+        logger.info(f"渲染图表，任务数: {len(tasks)}，目标尺寸: 720x1440 (1:2)")
+        image_url = await self.html_render(html, {}, options=options)
         logger.info(f"图表图片URL: {image_url}")
         yield event.image_result(image_url)
 

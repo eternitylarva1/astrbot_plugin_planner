@@ -241,79 +241,99 @@ class Visualizer:
         weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
         weekday = weekdays[target_date.weekday()]
 
-        # 根据任务数量动态调整样式
+        # 根据任务数量动态调整样式 - 1:2手机比例 720x1440
         task_count = len(sorted_tasks)
         if task_count <= 3:
-            # 大尺寸：1-3个任务，每个占约1/3高度
-            item_gap = 24
-            card_padding = "28px 24px"
-            time_font_size = 56
-            time_end_font_size = 36
-            emoji_font_size = 52
-            name_font_size = 48
-            duration_font_size = 32
-            status_font_size = 44
-            dot_size = 20
-            dot_border = 4
-            header_font_size = 56
-            header_gap = 16
+            # 大尺寸：1-3个任务
+            header_pad = 36
+            title_size = 60
+            badge_size = 28
+            item_gap = 20
+            time_width = 140
+            time_size = 52
+            time_end_size = 32
+            emoji_size = 64
+            name_size = 44
+            dur_size = 28
+            stat_size = 48
+            dot_size = 18
+            card_pad = "24px 20px"
+            stats_pad = 28
+            stats_label = 28
+            stats_value = 40
+            free_size = 32
         elif task_count <= 6:
             # 中等尺寸：4-6个任务
-            item_gap = 18
-            card_padding = "20px 18px"
-            time_font_size = 44
-            time_end_font_size = 28
-            emoji_font_size = 40
-            name_font_size = 36
-            duration_font_size = 26
-            status_font_size = 36
+            header_pad = 28
+            title_size = 48
+            badge_size = 24
+            item_gap = 16
+            time_width = 120
+            time_size = 44
+            time_end_size = 28
+            emoji_size = 52
+            name_size = 36
+            dur_size = 24
+            stat_size = 40
             dot_size = 16
-            dot_border = 3
-            header_font_size = 48
-            header_gap = 14
+            card_pad = "20px 16px"
+            stats_pad = 24
+            stats_label = 24
+            stats_value = 34
+            free_size = 28
         elif task_count <= 10:
             # 紧凑尺寸：7-10个任务
-            item_gap = 14
-            card_padding = "16px 14px"
-            time_font_size = 36
-            time_end_font_size = 24
-            emoji_font_size = 32
-            name_font_size = 30
-            duration_font_size = 22
-            status_font_size = 30
+            header_pad = 22
+            title_size = 40
+            badge_size = 20
+            item_gap = 12
+            time_width = 100
+            time_size = 36
+            time_end_size = 24
+            emoji_size = 42
+            name_size = 30
+            dur_size = 20
+            stat_size = 34
             dot_size = 14
-            dot_border = 3
-            header_font_size = 40
-            header_gap = 12
+            card_pad = "16px 12px"
+            stats_pad = 20
+            stats_label = 20
+            stats_value = 28
+            free_size = 24
         else:
             # 超紧凑尺寸：超过10个任务
-            item_gap = 10
-            card_padding = "12px 10px"
-            time_font_size = 28
-            time_end_font_size = 20
-            emoji_font_size = 26
-            name_font_size = 24
-            duration_font_size = 18
-            status_font_size = 24
+            header_pad = 18
+            title_size = 34
+            badge_size = 18
+            item_gap = 8
+            time_width = 85
+            time_size = 28
+            time_end_size = 20
+            emoji_size = 34
+            name_size = 24
+            dur_size = 16
+            stat_size = 28
             dot_size = 12
-            dot_border = 2
-            header_font_size = 34
-            header_gap = 10
+            card_pad = "12px 10px"
+            stats_pad = 16
+            stats_label = 16
+            stats_value = 22
+            free_size = 20
 
         return f"""<!DOCTYPE html>
 <html>
-    <head>
+<head>
     <meta charset="UTF-8">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         html, body {{
-            width: 1280px;
-            height: 1920px;
+            width: 720px;
+            height: 1440px;
             overflow: hidden;
         }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             padding: 0;
             margin: 0;
             display: flex;
@@ -322,11 +342,8 @@ class Visualizer:
         }}
         .container {{
             background: #ffffff;
-            border-radius: 0;
-            padding: 0;
-            box-shadow: none;
-            width: 1280px;
-            height: 1920px;
+            width: 720px;
+            height: 1440px;
             color: #1e293b;
             display: flex;
             flex-direction: column;
@@ -334,75 +351,75 @@ class Visualizer:
             overflow: hidden;
         }}
         .header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: {header_gap * 2}px {header_gap * 2}px {header_gap}px;
+            padding: {header_pad}px {header_pad * 1.5}px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }}
+        .titlewrapper {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
         .title {{
-            font-size: {header_font_size}px;
-            font-weight: 700;
+            font-size: {title_size}px;
+            font-weight: 800;
             color: #ffffff;
             display: flex;
             align-items: center;
-            gap: {header_gap}px;
-            letter-spacing: -0.5px;
-            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            gap: 12px;
+            letter-spacing: -1px;
         }}
         .date-badge {{
-            background: rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.2);
             backdrop-filter: blur(10px);
             color: #ffffff;
-            padding: {header_gap}px {header_gap * 1.5}px;
-            border-radius: 16px;
-            font-size: {header_font_size * 0.5}px;
-            font-weight: 600;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+            padding: {badge_size * 0.4}px {badge_size}px;
+            border-radius: 20px;
+            font-size: {badge_size}px;
+            font-weight: 700;
         }}
         .tasks-container {{
-            min-height: 0;
             flex: 1;
-            padding: {header_gap}px {header_gap * 1.5}px;
+            padding: {header_pad}px {header_pad}px;
             display: flex;
             flex-direction: column;
             gap: {item_gap}px;
             background: #f8fafc;
+            overflow: hidden;
         }}
         .timeline-item {{
             display: flex;
-            align-items: stretch;
+            align-items: center;
             gap: {item_gap}px;
             flex: 1;
             position: relative;
             min-height: 0;
         }}
         .timeline-time {{
-            width: 110px;
-            min-width: 110px;
-            max-width: 110px;
+            width: {time_width}px;
+            min-width: {time_width}px;
+            max-width: {time_width}px;
             text-align: center;
             color: #1e293b;
-            font-weight: 700;
+            font-weight: 800;
             background: #ffffff;
             border-radius: 16px;
-            padding: 12px 8px;
+            padding: 10px 6px;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            box-shadow: 0 2px 12px rgba(99, 102, 241, 0.1);
+            box-shadow: 0 2px 12px rgba(102, 126, 234, 0.15);
         }}
-        .timeline-time .time-start {{
-            font-size: {time_font_size}px;
+        .time-start {{
+            font-size: {time_size}px;
             line-height: 1.1;
             font-weight: 800;
             color: #1e293b;
         }}
-        .timeline-time-end {{
-            margin-top: 4px;
-            font-size: {time_end_font_size}px;
+        .time-end {{
+            margin-top: 2px;
+            font-size: {time_end_size}px;
             color: #94a3b8;
             font-weight: 600;
         }}
@@ -410,12 +427,11 @@ class Visualizer:
             width: {dot_size}px;
             min-width: {dot_size}px;
             border-radius: 50%;
-            border: {dot_border}px solid #667eea;
+            border: 3px solid #667eea;
             position: relative;
-            margin-top: 8px;
             height: {dot_size}px;
             background: #667eea;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.25);
         }}
         .timeline-dot::after {{
             content: "";
@@ -425,7 +441,7 @@ class Visualizer:
             transform: translateX(-50%);
             width: 2px;
             height: calc(100% + {item_gap}px);
-            background: #e2e8f0;
+            background: linear-gradient(180deg, #667eea 0%, #e2e8f0 100%);
         }}
         .timeline-item:last-child .timeline-dot::after {{
             display: none;
@@ -433,55 +449,52 @@ class Visualizer:
         .timeline-card {{
             flex: 1;
             height: 100%;
-            padding: {card_padding};
+            padding: {card_pad};
             border-radius: 16px;
-            border: none;
             background: #ffffff;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
             display: flex;
             align-items: center;
-            transition: all 0.3s ease;
-        }}
-        .timeline-card:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
+            overflow: hidden;
         }}
         .task-content {{
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 12px;
             width: 100%;
         }}
         .task-emoji {{
-            font-size: {emoji_font_size}px;
-            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+            font-size: {emoji_size}px;
+            flex-shrink: 0;
         }}
         .task-name {{
-            font-size: {name_font_size}px;
+            font-size: {name_size}px;
             color: #1e293b;
             font-weight: 700;
             flex: 1;
-            letter-spacing: -0.3px;
-        }}
-        .task-duration {{
-            font-size: {duration_font_size}px;
-            color: #64748b;
-            background: rgba(102, 126, 234, 0.1);
-            padding: 6px 14px;
-            border-radius: 10px;
-            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
             white-space: nowrap;
         }}
-        .task-status {{
-            font-size: {status_font_size}px;
-            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        .task-duration {{
+            font-size: {dur_size}px;
+            color: #64748b;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-weight: 700;
+            white-space: nowrap;
+            flex-shrink: 0;
         }}
-        /* 已完成任务样式 */
+        .task-status {{
+            font-size: {stat_size}px;
+            flex-shrink: 0;
+        }}
+        /* 已完成样式 */
         .timeline-item.done .timeline-time {{
-            opacity: 0.5;
             background: #f1f5f9;
         }}
-        .timeline-item.done .timeline-time .time-start {{
+        .timeline-item.done .time-start {{
             text-decoration: line-through;
             color: #94a3b8;
         }}
@@ -490,141 +503,76 @@ class Visualizer:
             border-color: #94a3b8;
             box-shadow: none;
         }}
-        .timeline-card.done {{
-            opacity: 0.6;
+        .timeline-item.done .timeline-card {{
             background: #f8fafc;
-        }}
-        .timeline-item.done .task-emoji {{
-            opacity: 0.5;
-        }}
-        .timeline-item.done .task-name {{
-            opacity: 0.6;
-            text-decoration: line-through;
-            color: #64748b;
-        }}
-        .timeline-item.done .task-duration {{
-            opacity: 0.5;
-        }}
-        .timeline-item.done .task-status {{
             opacity: 0.7;
         }}
-        /* 空白占位项样式 */
+        .timeline-item.done .task-name {{
+            text-decoration: line-through;
+            color: #94a3b8;
+        }}
+        .timeline-item.done .task-emoji, .timeline-item.done .task-duration {{
+            opacity: 0.5;
+        }}
+        /* 空白占位 */
         .timeline-item.placeholder .timeline-time {{
             background: #f1f5f9;
         }}
-        .timeline-item.placeholder .timeline-time .time-start {{
+        .timeline-item.placeholder .time-start {{
             color: #cbd5e1;
         }}
-        .timeline-item.placeholder .placeholder-dot {{
+        .timeline-item.placeholder .timeline-dot {{
             background: transparent;
             border-color: #e2e8f0;
             box-shadow: none;
         }}
-        .timeline-item.placeholder .placeholder-dot::after {{
+        .timeline-item.placeholder .timeline-dot::after {{
             background: #e2e8f0;
         }}
-        .timeline-item.placeholder .placeholder-card {{
+        .timeline-item.placeholder .timeline-card {{
             background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
             border: 2px dashed #e2e8f0;
         }}
-        .daily-card {{
-            border-radius: 14px;
-            padding: 16px;
-            margin-bottom: 12px;
-        }}
-        .daily-card-head {{
-            display: flex;
-            justify-content: space-between;
-            font-size: 22px;
-            font-weight: 600;
-            color: #111827;
-        }}
-        .daily-card-meta {{
-            margin-top: 10px;
-            display: flex;
-            justify-content: space-between;
-            color: #374151;
-            font-size: 17px;
-            font-weight: 700;
-        }}
-        .compact-item {{
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 14px;
-            margin-bottom: 10px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            font-size: 20px;
-            color: #111827;
-            font-weight: 700;
-        }}
-        .compact-color {{
-            width: 8px;
-            height: 24px;
-            border-radius: 4px;
-            display: inline-block;
-        }}
-        .compact-meta {{
-            margin-left: auto;
-            color: #374151;
-            font-size: 15px;
-            font-weight: 700;
-        }}
-        .no-tasks {{
-            text-align: center;
-            color: #94a3b8;
-            padding: 60px 40px;
-            font-size: 32px;
-            font-weight: 600;
-        }}
         .stats {{
-            margin-top: auto;
-            padding: {header_gap}px {header_gap * 1.5}px;
+            padding: {stats_pad}px {header_pad}px;
             background: #ffffff;
             border-top: 1px solid #e2e8f0;
         }}
         .progress-bar {{
-            height: 10px;
+            height: 12px;
             background: rgba(102, 126, 234, 0.1);
-            border-radius: 8px;
+            border-radius: 10px;
             overflow: hidden;
             margin-bottom: 12px;
         }}
         .progress-fill {{
             height: 100%;
             background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            border-radius: 8px;
-            transition: width 0.6s ease;
+            border-radius: 10px;
         }}
         .stats-row {{
             display: flex;
             justify-content: space-between;
             align-items: center;
         }}
-        .stats-item {{
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }}
         .stats-label {{
-            font-size: 26px;
+            font-size: {stats_label}px;
             color: #64748b;
             font-weight: 600;
         }}
         .stats-value {{
-            font-size: 36px;
+            font-size: {stats_value}px;
             font-weight: 800;
             color: #667eea;
         }}
         .free-hint {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 10px 20px;
-            border-radius: 14px;
-            font-size: 24px;
+            padding: 10px 18px;
+            border-radius: 16px;
+            font-size: {free_size}px;
             font-weight: 700;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
         }}
         .footer {{
             display: none;
@@ -634,9 +582,11 @@ class Visualizer:
 <body>
     <div class="container">
         <div class="header">
-            <div class="title">
-                📅 {target_date.strftime("%Y年%m月%d日")}
-                <span class="date-badge">{weekday}</span>
+            <div class="titlewrapper">
+                <div class="title">
+                    📅 {target_date.strftime("%Y年%m月%d日")}
+                </div>
+                <div class="date-badge">{weekday}</div>
             </div>
         </div>
         <div class="tasks-container">
