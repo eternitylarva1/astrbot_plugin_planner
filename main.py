@@ -4,7 +4,9 @@
 """
 
 import asyncio
+import os
 import re
+import subprocess
 import time
 from datetime import datetime, timedelta, date, time as dt_time
 from typing import Optional, List, Dict, Any
@@ -1639,6 +1641,55 @@ class PlannerPlugin(Star):
             return "请提供要设置的参数"
 
         return "✅ " + " | ".join(results)
+
+    @filter.command("更新插件", alias={"重载插件", "更新计划助手"})
+    async def update_plugin(self, event: AstrMessageEvent) -> MessageEventResult:
+        """更新并热重载本插件"""
+        yield event.plain_result("🔄 正在更新插件...")
+
+        # 获取插件目录
+        plugin_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        try:
+            # git pull
+            result = subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd=plugin_dir,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            if result.returncode != 0:
+                yield event.plain_result(f"❌ Git更新失败：\n{result.stderr}")
+                return
+
+            output = result.stdout.strip()
+            if "Already up to date" in output or "已是最新" in output:
+                yield event.plain_result("✅ 插件已是最新版本，无需更新")
+                return
+
+            # 调用 AstrBot 重载插件
+            try:
+                # 通过 context 获取 plugin_manager
+                if hasattr(self.context, "plugin_manager"):
+                    success, msg = await self.context.plugin_manager.reload("astrbot_plugin_planner")
+                    if success:
+                        yield event.plain_result(f"✅ 插件更新并重载成功！\n\n{output}")
+                    else:
+                        yield event.plain_result(f"⚠️ 插件已更新但重载失败：{msg}\n\n请手动重启 AstrBot")
+                elif hasattr(self.context, "reload_plugin"):
+                    await self.context.reload_plugin("astrbot_plugin_planner")
+                    yield event.plain_result(f"✅ 插件更新并重载成功！\n\n{output}")
+                else:
+                    yield event.plain_result(f"✅ 插件已更新（重载接口不可用，请手动重启 AstrBot）\n\n{output}")
+            except Exception as e:
+                yield event.plain_result(f"✅ 插件已更新（重载失败：{e}，请手动重启 AstrBot）\n\n{output}")
+
+        except subprocess.TimeoutExpired:
+            yield event.plain_result("❌ 更新超时，请检查网络连接")
+        except Exception as e:
+            yield event.plain_result(f"❌ 更新失败：{e}")
 
     @filter.llm_tool(name="plan_with_ai")
     async def plan_with_ai(
