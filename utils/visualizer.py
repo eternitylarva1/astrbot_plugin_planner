@@ -245,80 +245,80 @@ class Visualizer:
         task_count = len(sorted_tasks)
         if task_count <= 3:
             # 大尺寸：1-3个任务
-            header_pad = 36
-            title_size = 60
-            badge_size = 28
-            item_gap = 20
-            time_width = 140
-            time_size = 52
-            time_end_size = 32
-            emoji_size = 64
-            name_size = 44
-            dur_size = 28
-            stat_size = 48
-            dot_size = 18
-            card_pad = "24px 20px"
-            stats_pad = 28
-            stats_label = 28
-            stats_value = 40
-            free_size = 32
-        elif task_count <= 6:
-            # 中等尺寸：4-6个任务
-            header_pad = 28
+            header_pad = 32
             title_size = 48
-            badge_size = 24
-            item_gap = 16
-            time_width = 120
-            time_size = 44
-            time_end_size = 28
-            emoji_size = 52
-            name_size = 36
-            dur_size = 24
-            stat_size = 40
+            badge_size = 26
+            item_gap = 24
+            time_width = 110
+            time_size = 42
+            time_end_size = 26
+            emoji_size = 44
+            name_size = 34
+            dur_size = 22
+            stat_size = 38
             dot_size = 16
             card_pad = "20px 16px"
             stats_pad = 24
             stats_label = 24
             stats_value = 34
-            free_size = 28
-        elif task_count <= 10:
-            # 紧凑尺寸：7-10个任务
-            header_pad = 22
+            free_size = 26
+        elif task_count <= 6:
+            # 中等尺寸：4-6个任务
+            header_pad = 26
             title_size = 40
-            badge_size = 20
-            item_gap = 12
-            time_width = 100
-            time_size = 36
-            time_end_size = 24
-            emoji_size = 42
-            name_size = 30
-            dur_size = 20
-            stat_size = 34
+            badge_size = 22
+            item_gap = 16
+            time_width = 95
+            time_size = 34
+            time_end_size = 22
+            emoji_size = 38
+            name_size = 28
+            dur_size = 18
+            stat_size = 32
             dot_size = 14
-            card_pad = "16px 12px"
+            card_pad = "14px 12px"
             stats_pad = 20
             stats_label = 20
             stats_value = 28
-            free_size = 24
-        else:
-            # 超紧凑尺寸：超过10个任务
-            header_pad = 18
+            free_size = 22
+        elif task_count <= 10:
+            # 紧凑尺寸：7-10个任务
+            header_pad = 20
             title_size = 34
             badge_size = 18
-            item_gap = 8
-            time_width = 85
+            item_gap = 12
+            time_width = 80
             time_size = 28
-            time_end_size = 20
-            emoji_size = 34
-            name_size = 24
-            dur_size = 16
-            stat_size = 28
+            time_end_size = 18
+            emoji_size = 32
+            name_size = 22
+            dur_size = 14
+            stat_size = 26
             dot_size = 12
-            card_pad = "12px 10px"
+            card_pad = "10px 8px"
             stats_pad = 16
             stats_label = 16
             stats_value = 22
-            free_size = 20
+            free_size = 18
+        else:
+            # 超紧凑尺寸：超过10个任务
+            header_pad = 16
+            title_size = 28
+            badge_size = 16
+            item_gap = 8
+            time_width = 65
+            time_size = 22
+            time_end_size = 14
+            emoji_size = 26
+            name_size = 18
+            dur_size = 12
+            stat_size = 22
+            dot_size = 10
+            card_pad = "8px 6px"
+            stats_pad = 12
+            stats_label = 14
+            stats_value = 18
+            free_size = 14
 
         return f"""<!DOCTYPE html>
 <html>
@@ -390,7 +390,7 @@ class Visualizer:
         .timeline-item {{
             display: flex;
             align-items: center;
-            gap: {item_gap}px;
+            gap: 12px;
             flex: 1;
             position: relative;
             min-height: 0;
@@ -403,8 +403,8 @@ class Visualizer:
             color: #1e293b;
             font-weight: 800;
             background: #ffffff;
-            border-radius: 16px;
-            padding: 10px 6px;
+            border-radius: 14px;
+            padding: 8px 4px;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -460,27 +460,28 @@ class Visualizer:
         .task-content {{
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             width: 100%;
+            min-width: 0;
         }}
         .task-emoji {{
             font-size: {emoji_size}px;
             flex-shrink: 0;
+            line-height: 1;
         }}
         .task-name {{
             font-size: {name_size}px;
             color: #1e293b;
             font-weight: 700;
             flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            line-height: 1.2;
+            word-break: break-word;
         }}
         .task-duration {{
             font-size: {dur_size}px;
             color: #64748b;
             background: rgba(102, 126, 234, 0.1);
-            padding: 6px 12px;
+            padding: 4px 10px;
             border-radius: 8px;
             font-weight: 700;
             white-space: nowrap;
