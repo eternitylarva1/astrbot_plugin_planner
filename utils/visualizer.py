@@ -80,7 +80,9 @@ class Visualizer:
         except (ValueError, TypeError):
             return default
 
-    def _render_daily_timeline_items(self, tasks: List[Task]) -> str:
+    def _render_daily_timeline_items(
+        self, tasks: List[Task], min_items: int = 6
+    ) -> str:
         """渲染日视图：时间轴样式（默认）"""
         rows = []
         for task in tasks:
@@ -116,6 +118,21 @@ class Visualizer:
                 </div>
             </div>
             """)
+
+        # 填充空白占位，保持最小数量
+        empty_count = max(0, min_items - len(tasks))
+        for i in range(empty_count):
+            rows.append(f"""
+            <div class="timeline-item placeholder">
+                <div class="timeline-time placeholder-time">
+                    <div>--:--</div>
+                    <div class="timeline-time-end">--:--</div>
+                </div>
+                <div class="timeline-dot placeholder-dot"></div>
+                <div class="timeline-card placeholder-card"></div>
+            </div>
+            """)
+
         return "\n".join(rows)
 
     def _render_daily_card_items(self, tasks: List[Task]) -> str:
@@ -204,13 +221,19 @@ class Visualizer:
         }
         resolved_style = style_alias.get((style or "").lower(), "timeline")
 
+        # 任务数量（用于动态样式和填充判断）
+        task_count = len(sorted_tasks)
+
         if sorted_tasks:
             if resolved_style == "card":
                 task_rows_html = self._render_daily_card_items(sorted_tasks)
             elif resolved_style == "compact":
                 task_rows_html = self._render_daily_compact_items(sorted_tasks)
             else:
-                task_rows_html = self._render_daily_timeline_items(sorted_tasks)
+                # 时间轴样式：至少显示6个槽位，不足的用空白占位
+                task_rows_html = self._render_daily_timeline_items(
+                    sorted_tasks, min_items=6
+                )
         else:
             task_rows_html = '<div class="no-tasks">暂无任务安排</div>'
 
@@ -333,9 +356,12 @@ class Visualizer:
             gap: 20px;
             flex: 1;
             position: relative;
+            min-height: 0;
         }}
         .timeline-time {{
-            width: 20%;
+            width: 120px;
+            min-width: 120px;
+            max-width: 120px;
             text-align: center;
             color: #1e293b;
             font-weight: 700;
@@ -463,6 +489,25 @@ class Visualizer:
         .timeline-item.done .task-status {{
             opacity: 0.7;
             font-size: 0.85em;
+        }}
+        /* 空白占位项样式 */
+        .timeline-item.placeholder {{
+            opacity: 0.15;
+        }}
+        .timeline-item.placeholder .placeholder-time {{
+            background: #e2e8f0;
+        }}
+        .timeline-item.placeholder .placeholder-dot {{
+            border-color: #cbd5e1;
+            background: transparent;
+            box-shadow: none;
+        }}
+        .timeline-item.placeholder .placeholder-dot::after {{
+            background: #cbd5e1;
+        }}
+        .timeline-item.placeholder .placeholder-card {{
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            border: 1px dashed #cbd5e1;
         }}
         .daily-card {{
             border-radius: 14px;
