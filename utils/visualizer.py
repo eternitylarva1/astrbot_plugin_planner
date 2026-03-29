@@ -287,8 +287,8 @@ class Visualizer:
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         html, body {{
-            width: 100%;
-            height: 100%;
+            width: 1400px;
+            height: 2800px;
             overflow: hidden;
         }}
         body {{
@@ -297,7 +297,7 @@ class Visualizer:
             padding: 0;
             margin: 0;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
         }}
         .container {{
@@ -307,14 +307,13 @@ class Visualizer:
             box-shadow:
                 0 10px 40px -10px rgba(0, 0, 0, 0.1),
                 0 6px 20px -6px rgba(0, 0, 0, 0.08);
-            width: 100vw;
-            height: 100vh;
-            aspect-ratio: 1 / 2;
-            margin: 0;
+            width: 1400px;
+            height: 2800px;
             color: #1e293b;
             display: flex;
             flex-direction: column;
             box-sizing: border-box;
+            overflow: hidden;
         }}
         .header {{
             display: flex;

@@ -602,10 +602,8 @@ class PlannerPlugin(Star):
                 tasks_by_date[d] = tasks
 
             html = self.visualizer.render_weekly_schedule(tasks_by_date)
-            # 传递 viewport 参数确保 1:2 比例（宽度:高度）
-            image_url = await self.html_render(
-                html, {}, return_url=True, options={"viewport": {"width": 1400, "height": 2800}}
-            )
+            # t2i 服务使用默认 viewport (1280x720)，CSS 已设置固定尺寸 1400x2800
+            image_url = await self.html_render(html, {})
             yield event.image_result(image_url)
             return
         elif "下周" in user_input:
@@ -617,10 +615,8 @@ class PlannerPlugin(Star):
                 tasks_by_date[d] = tasks
 
             html = self.visualizer.render_weekly_schedule(tasks_by_date)
-            # 传递 viewport 参数确保 1:2 比例（宽度:高度）
-            image_url = await self.html_render(
-                html, {}, return_url=True, options={"viewport": {"width": 1400, "height": 2800}}
-            )
+            # t2i 服务使用默认 viewport (1280x720)，CSS 已设置固定尺寸 1400x2800
+            image_url = await self.html_render(html, {})
             yield event.image_result(image_url)
             return
         elif any(
@@ -654,12 +650,9 @@ class PlannerPlugin(Star):
         html = self.visualizer.render_daily_schedule(
             tasks, target_date, style=chart_style
         )
-        # 传递 viewport 参数确保 1:2 比例（宽度:高度）
-        viewport_config = {"viewport": {"width": 1400, "height": 2800}}
-        logger.info(f"渲染图表，任务数: {len(tasks)}, viewport: {viewport_config}")
-        image_url = await self.html_render(
-            html, {}, return_url=True, options=viewport_config
-        )
+        # t2i 服务使用默认 viewport (1280x720)，CSS 已设置固定尺寸 1400x2800
+        logger.info(f"渲染图表，任务数: {len(tasks)}，目标尺寸: 1400x2800")
+        image_url = await self.html_render(html, {})
         logger.info(f"图表图片URL: {image_url}")
         yield event.image_result(image_url)
 
