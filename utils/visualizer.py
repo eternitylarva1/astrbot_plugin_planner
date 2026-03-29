@@ -104,11 +104,11 @@ class Visualizer:
             rows.append(f"""
             <div class="timeline-item{done_class}">
                 <div class="timeline-time">
-                    <div>{start_str}</div>
+                    <div class="time-start">{start_str}</div>
                     <div class="timeline-time-end">{end_str}</div>
                 </div>
                 <div class="timeline-dot" style="border-color: {color}; background: {bg_color};"></div>
-                <div class="timeline-card{done_class}" style="background: {bg_color}; border-left: 4px solid {color};">
+                <div class="timeline-card{done_class}" style="background: {bg_color};">
                     <div class="task-content">
                         <span class="task-emoji">{emoji}</span>
                         <span class="task-name">{task.name}</span>
@@ -124,8 +124,8 @@ class Visualizer:
         for i in range(empty_count):
             rows.append(f"""
             <div class="timeline-item placeholder">
-                <div class="timeline-time placeholder-time">
-                    <div>--:--</div>
+                <div class="timeline-time">
+                    <div class="time-start">--:--</div>
                     <div class="timeline-time-end">--:--</div>
                 </div>
                 <div class="timeline-dot placeholder-dot"></div>
@@ -243,57 +243,77 @@ class Visualizer:
 
         # 根据任务数量动态调整样式
         task_count = len(sorted_tasks)
-        if task_count <= 6:
-            # 大尺寸：5-6个任务填满页面
-            item_gap = 20
-            card_padding = "24px 20px"
-            time_font_size = 68
-            time_end_font_size = 42
-            emoji_font_size = 34
-            name_font_size = 38
-            duration_font_size = 22
-            status_font_size = 30
+        if task_count <= 3:
+            # 大尺寸：1-3个任务，每个占约1/3高度
+            item_gap = 24
+            card_padding = "28px 24px"
+            time_font_size = 56
+            time_end_font_size = 36
+            emoji_font_size = 52
+            name_font_size = 48
+            duration_font_size = 32
+            status_font_size = 44
+            dot_size = 20
+            dot_border = 4
+            header_font_size = 56
+            header_gap = 16
+        elif task_count <= 6:
+            # 中等尺寸：4-6个任务
+            item_gap = 18
+            card_padding = "20px 18px"
+            time_font_size = 44
+            time_end_font_size = 28
+            emoji_font_size = 40
+            name_font_size = 36
+            duration_font_size = 26
+            status_font_size = 36
             dot_size = 16
             dot_border = 3
+            header_font_size = 48
+            header_gap = 14
         elif task_count <= 10:
-            # 中等尺寸：7-10个任务
-            item_gap = 16
-            card_padding = "20px 18px"
-            time_font_size = 51
-            time_end_font_size = 34
+            # 紧凑尺寸：7-10个任务
+            item_gap = 14
+            card_padding = "16px 14px"
+            time_font_size = 36
+            time_end_font_size = 24
             emoji_font_size = 32
-            name_font_size = 34
-            duration_font_size = 20
-            status_font_size = 28
-            dot_size = 15
-            dot_border = 3
-        else:
-            # 紧凑尺寸：超过10个任务
-            item_gap = 12
-            card_padding = "16px 16px"
-            time_font_size = 38
-            time_end_font_size = 25
-            emoji_font_size = 30
             name_font_size = 30
-            duration_font_size = 18
-            status_font_size = 26
+            duration_font_size = 22
+            status_font_size = 30
             dot_size = 14
             dot_border = 3
+            header_font_size = 40
+            header_gap = 12
+        else:
+            # 超紧凑尺寸：超过10个任务
+            item_gap = 10
+            card_padding = "12px 10px"
+            time_font_size = 28
+            time_end_font_size = 20
+            emoji_font_size = 26
+            name_font_size = 24
+            duration_font_size = 18
+            status_font_size = 24
+            dot_size = 12
+            dot_border = 2
+            header_font_size = 34
+            header_gap = 10
 
         return f"""<!DOCTYPE html>
 <html>
-<head>
+    <head>
     <meta charset="UTF-8">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         html, body {{
-            width: 1400px;
-            height: 2800px;
+            width: 1280px;
+            height: 1920px;
             overflow: hidden;
         }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-            background: transparent;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 0;
             margin: 0;
             display: flex;
@@ -302,13 +322,11 @@ class Visualizer:
         }}
         .container {{
             background: #ffffff;
-            border-radius: 28px;
-            padding: 32px 28px 24px;
-            box-shadow:
-                0 10px 40px -10px rgba(0, 0, 0, 0.1),
-                0 6px 20px -6px rgba(0, 0, 0, 0.08);
-            width: 1400px;
-            height: 2800px;
+            border-radius: 0;
+            padding: 0;
+            box-shadow: none;
+            width: 1280px;
+            height: 1920px;
             color: #1e293b;
             display: flex;
             flex-direction: column;
@@ -319,64 +337,73 @@ class Visualizer:
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(99, 102, 241, 0.08);
+            padding: {header_gap * 2}px {header_gap * 2}px {header_gap}px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
         }}
         .title {{
-            font-size: 48px;
+            font-size: {header_font_size}px;
             font-weight: 700;
-            color: #1e293b;
+            color: #ffffff;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: {header_gap}px;
             letter-spacing: -0.5px;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }}
         .date-badge {{
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
             color: #ffffff;
-            padding: 10px 24px;
-            border-radius: 20px;
-            font-size: 24px;
+            padding: {header_gap}px {header_gap * 1.5}px;
+            border-radius: 16px;
+            font-size: {header_font_size * 0.5}px;
             font-weight: 600;
-            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
         }}
         .tasks-container {{
             min-height: 0;
             flex: 1;
-            padding-top: 8px;
+            padding: {header_gap}px {header_gap * 1.5}px;
             display: flex;
             flex-direction: column;
             gap: {item_gap}px;
+            background: #f8fafc;
         }}
         .timeline-item {{
             display: flex;
             align-items: stretch;
-            gap: 20px;
+            gap: {item_gap}px;
             flex: 1;
             position: relative;
             min-height: 0;
         }}
         .timeline-time {{
-            width: 120px;
-            min-width: 120px;
-            max-width: 120px;
+            width: 110px;
+            min-width: 110px;
+            max-width: 110px;
             text-align: center;
             color: #1e293b;
             font-weight: 700;
-            background: #e2e8f0;
+            background: #ffffff;
             border-radius: 16px;
-            padding: 16px 12px;
+            padding: 12px 8px;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.06);
+            box-shadow: 0 2px 12px rgba(99, 102, 241, 0.1);
+        }}
+        .timeline-time .time-start {{
+            font-size: {time_font_size}px;
+            line-height: 1.1;
+            font-weight: 800;
+            color: #1e293b;
         }}
         .timeline-time-end {{
             margin-top: 4px;
             font-size: {time_end_font_size}px;
-            color: #475569;
+            color: #94a3b8;
             font-weight: 600;
         }}
         .timeline-dot {{
@@ -385,9 +412,10 @@ class Visualizer:
             border-radius: 50%;
             border: {dot_border}px solid #667eea;
             position: relative;
-            margin-top: 12px;
+            margin-top: 8px;
             height: {dot_size}px;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.3);
+            background: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
         }}
         .timeline-dot::after {{
             content: "";
@@ -397,7 +425,7 @@ class Visualizer:
             transform: translateX(-50%);
             width: 2px;
             height: calc(100% + {item_gap}px);
-            background: #e5e7eb;
+            background: #e2e8f0;
         }}
         .timeline-item:last-child .timeline-dot::after {{
             display: none;
@@ -406,21 +434,17 @@ class Visualizer:
             flex: 1;
             height: 100%;
             padding: {card_padding};
-            border-radius: 20px;
-            border: 1px solid rgba(99, 102, 241, 0.08);
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-            box-shadow:
-                0 4px 12px rgba(0, 0, 0, 0.08),
-                0 2px 6px rgba(0, 0, 0, 0.04);
+            border-radius: 16px;
+            border: none;
+            background: #ffffff;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
             display: flex;
             align-items: center;
             transition: all 0.3s ease;
         }}
         .timeline-card:hover {{
             transform: translateY(-2px);
-            box-shadow:
-                0 8px 20px rgba(0, 0, 0, 0.12),
-                0 4px 8px rgba(0, 0, 0, 0.06);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
         }}
         .task-content {{
             display: flex;
@@ -435,78 +459,73 @@ class Visualizer:
         .task-name {{
             font-size: {name_font_size}px;
             color: #1e293b;
-            font-weight: 600;
+            font-weight: 700;
             flex: 1;
             letter-spacing: -0.3px;
         }}
         .task-duration {{
             font-size: {duration_font_size}px;
             color: #64748b;
-            background: rgba(99, 102, 241, 0.08);
-            padding: 8px 16px;
-            border-radius: 12px;
-            font-weight: 600;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-weight: 700;
             white-space: nowrap;
         }}
         .task-status {{
             font-size: {status_font_size}px;
             filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
         }}
-        /* 已完成任务样式：变暗、缩小 */
-        .timeline-item.done {{
-            flex: 0.6;
-        }}
+        /* 已完成任务样式 */
         .timeline-item.done .timeline-time {{
             opacity: 0.5;
-            filter: grayscale(0.3);
+            background: #f1f5f9;
         }}
-        .timeline-item.done .timeline-time > div {{
-            font-size: 0.7em;
+        .timeline-item.done .timeline-time .time-start {{
+            text-decoration: line-through;
+            color: #94a3b8;
         }}
         .timeline-item.done .timeline-dot {{
-            opacity: 0.4;
-            filter: grayscale(0.5);
+            background: #94a3b8;
+            border-color: #94a3b8;
+            box-shadow: none;
         }}
         .timeline-card.done {{
-            opacity: 0.5;
-            filter: grayscale(0.3);
-            transform: scale(0.95);
+            opacity: 0.6;
+            background: #f8fafc;
         }}
         .timeline-item.done .task-emoji {{
-            opacity: 0.6;
-            filter: grayscale(0.3);
+            opacity: 0.5;
         }}
         .timeline-item.done .task-name {{
             opacity: 0.6;
-            font-size: 0.85em;
             text-decoration: line-through;
+            color: #64748b;
         }}
         .timeline-item.done .task-duration {{
             opacity: 0.5;
-            font-size: 0.8em;
         }}
         .timeline-item.done .task-status {{
             opacity: 0.7;
-            font-size: 0.85em;
         }}
         /* 空白占位项样式 */
-        .timeline-item.placeholder {{
-            opacity: 0.15;
+        .timeline-item.placeholder .timeline-time {{
+            background: #f1f5f9;
         }}
-        .timeline-item.placeholder .placeholder-time {{
-            background: #e2e8f0;
+        .timeline-item.placeholder .timeline-time .time-start {{
+            color: #cbd5e1;
         }}
         .timeline-item.placeholder .placeholder-dot {{
-            border-color: #cbd5e1;
             background: transparent;
+            border-color: #e2e8f0;
             box-shadow: none;
         }}
         .timeline-item.placeholder .placeholder-dot::after {{
-            background: #cbd5e1;
+            background: #e2e8f0;
         }}
         .timeline-item.placeholder .placeholder-card {{
-            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-            border: 1px dashed #cbd5e1;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 2px dashed #e2e8f0;
         }}
         .daily-card {{
             border-radius: 14px;
@@ -554,28 +573,29 @@ class Visualizer:
         }}
         .no-tasks {{
             text-align: center;
-            color: #999;
-            padding: 80px 40px;
-            font-size: 30px;
+            color: #94a3b8;
+            padding: 60px 40px;
+            font-size: 32px;
+            font-weight: 600;
         }}
         .stats {{
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(99, 102, 241, 0.08);
+            margin-top: auto;
+            padding: {header_gap}px {header_gap * 1.5}px;
+            background: #ffffff;
+            border-top: 1px solid #e2e8f0;
         }}
         .progress-bar {{
-            height: 12px;
-            background: rgba(99, 102, 241, 0.08);
-            border-radius: 10px;
+            height: 10px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
             overflow: hidden;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }}
         .progress-fill {{
             height: 100%;
-            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
-            border-radius: 10px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
             transition: width 0.6s ease;
-            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
         }}
         .stats-row {{
             display: flex;
@@ -585,68 +605,29 @@ class Visualizer:
         .stats-item {{
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }}
         .stats-label {{
-            font-size: 22px;
+            font-size: 26px;
             color: #64748b;
             font-weight: 600;
         }}
         .stats-value {{
-            font-size: 32px;
-            font-weight: 700;
-            color: #1e293b;
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            padding: 4px 16px;
-            border-radius: 12px;
+            font-size: 36px;
+            font-weight: 800;
+            color: #667eea;
         }}
         .free-hint {{
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 12px 24px;
-            border-radius: 16px;
-            font-size: 22px;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+            padding: 10px 20px;
+            border-radius: 14px;
+            font-size: 24px;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }}
         .footer {{
-            margin-top: 16px;
-            text-align: center;
-            font-size: 16px;
-            color: #94a3b8;
-            font-weight: 500;
-        }}
-        @media (max-width: 768px) {{
-            body {{
-                align-items: flex-start;
-                padding: 0;
-            }}
-            .container {{
-                width: 100vw;
-                min-height: 100vh;
-                aspect-ratio: auto;
-                border-radius: 0;
-                padding: 20px 16px;
-            }}
-            .header {{
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 8px;
-            }}
-            .title {{
-                font-size: 30px;
-            }}
-            .task-name {{
-                font-size: 20px;
-            }}
-            .stats-row {{
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 10px;
-            }}
+            display: none;
         }}
     </style>
 </head>
@@ -657,7 +638,6 @@ class Visualizer:
                 📅 {target_date.strftime("%Y年%m月%d日")}
                 <span class="date-badge">{weekday}</span>
             </div>
-            <div class="date-badge">样式：{"时间轴" if resolved_style == "timeline" else "卡片" if resolved_style == "card" else "紧凑"}</div>
         </div>
         <div class="tasks-container">
             {task_rows_html}
@@ -674,7 +654,6 @@ class Visualizer:
                 <div class="free-hint">💡 还有 {free_hours:.1f}h 空闲</div>
             </div>
         </div>
-        <div class="footer">计划助手</div>
     </div>
 </body>
 </html>"""
