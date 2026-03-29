@@ -60,15 +60,19 @@ class ReminderService:
         if not task.start_time:
             return
 
+        # 如果任务在30分钟内开始，不发送提醒（太近了没必要）
+        time_until_start = (task.start_time - datetime.now()).total_seconds() / 60
+        if time_until_start < 30:
+            logger.info(
+                f"Task {task.name} starts in {time_until_start:.0f} minutes, skipping reminder"
+            )
+            return
+
         remind_time = task.start_time - timedelta(minutes=task.remind_before)
 
         # 如果提醒时间已过，跳过
         if remind_time <= datetime.now():
-            # 如果任务还没开始，仍然发送一个立即提醒
-            if task.start_time > datetime.now():
-                remind_time = datetime.now() + timedelta(seconds=5)
-            else:
-                return
+            return
 
         job_id = f"reminder_{task.id}"
 
