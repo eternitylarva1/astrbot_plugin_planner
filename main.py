@@ -651,7 +651,10 @@ class PlannerPlugin(Star):
             tasks, target_date, style=chart_style
         )
         # 传递 viewport 参数确保 1:2 比例（宽度:高度）
-        image_url = await self.html_render(html, {"viewport": {"width": 1400, "height": 2800}})
+        viewport_config = {"viewport": {"width": 1400, "height": 2800}}
+        logger.info(f"渲染图表，任务数: {len(tasks)}, viewport: {viewport_config}")
+        image_url = await self.html_render(html, viewport_config)
+        logger.info(f"图表图片URL: {image_url}")
         yield event.image_result(image_url)
 
     # ========== 基础指令 ==========
