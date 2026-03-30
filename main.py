@@ -580,12 +580,21 @@ class PlannerPlugin(Star):
         logger.info("计划助手插件已卸载")
 
     def _start_webui_server(self):
-        """启动 WebUI HTTP 服务器（延迟启动，由命令触发）"""
+        """启动 WebUI HTTP 服务器（插件启动时自动运行）"""
         if not self._webui_enabled:
-            logger.info("WebUI server is disabled, use /webui to start")
+            logger.info("WebUI server is disabled")
             return
 
-        logger.info("WebUI server available, use /webui 启动 to start")
+        # 在事件循环中启动服务器
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self._start_webui_async())
+                logger.info(f"WebUI server starting on http://{self._webui_host}:{self._webui_port}")
+            else:
+                loop.run_until_complete(self._start_webui_async())
+        except Exception as e:
+            logger.error(f"Failed to start WebUI server: {e}")
 
     async def _start_webui_async(self):
         """异步启动 WebUI HTTP 服务器"""
