@@ -4,9 +4,7 @@
 """
 
 import asyncio
-import os
 import re
-import subprocess
 import time
 from datetime import datetime, timedelta, date, time as dt_time
 from typing import Optional, List, Dict, Any
@@ -1641,40 +1639,6 @@ class PlannerPlugin(Star):
             return "请提供要设置的参数"
 
         return "✅ " + " | ".join(results)
-
-    @filter.command("更新插件", alias={"更新计划助手"})
-    async def update_plugin(self, event: AstrMessageEvent) -> MessageEventResult:
-        """从 Git 拉取最新代码（需手动重启 AstrBot 生效）"""
-        yield event.plain_result("🔄 正在更新插件...")
-
-        # 获取插件目录
-        plugin_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-        try:
-            # git pull
-            result = subprocess.run(
-                ["git", "pull", "origin", "main"],
-                cwd=plugin_dir,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-
-            if result.returncode != 0:
-                yield event.plain_result(f"❌ Git更新失败：\n{result.stderr}")
-                return
-
-            output = result.stdout.strip()
-            if "Already up to date" in output or "已是最新" in output:
-                yield event.plain_result("✅ 插件已是最新版本，无需更新")
-                return
-
-            yield event.plain_result(f"✅ 插件代码已更新，请手动重启 AstrBot 生效\n\n{output}")
-
-        except subprocess.TimeoutExpired:
-            yield event.plain_result("❌ 更新超时，请检查网络连接")
-        except Exception as e:
-            yield event.plain_result(f"❌ 更新失败：{e}")
 
     @filter.llm_tool(name="plan_with_ai")
     async def plan_with_ai(
