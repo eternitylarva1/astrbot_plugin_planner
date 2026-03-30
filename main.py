@@ -86,10 +86,6 @@ class PlannerPlugin(Star):
         
         # 调试：打印 context 属性
         logger.info(f"Context type: {type(context)}")
-        logger.info(f"Context attrs: {[a for a in dir(context) if not a.startswith('_')]}")
-        logger.info(f"Context has llm: {hasattr(context, 'llm')}")
-        if hasattr(context, 'llm'):
-            logger.info(f"Context.llm type: {type(context.llm)}")
 
         # 从配置读取（WebUI 可视化配置，持久化到 data/config/）
         self.config = config
@@ -2006,38 +2002,29 @@ class PlannerPlugin(Star):
     async def _call_llm_breakdown(self, task_name: str) -> List[Dict]:
         """通过 LLM 拆解任务（供 WebUI 调用）"""
         try:
-            # 优先使用事件 context（有 llm），否则用插件 context
-            ctx = self._event_context or self._context
-            
-            if not ctx:
-                logger.warning("No context available for LLM call")
-                return []
-            
-            # 检查 context 的所有属性
-            logger.info(f"Context type: {type(ctx)}")
-            logger.info(f"Context attrs: {[a for a in dir(ctx) if not a.startswith('_')]}")
-            
-            if hasattr(ctx, 'llm') and ctx.llm:
-                logger.info("Using ctx.llm")
-                llm = ctx.llm
-            elif hasattr(ctx, 'llm_handler') and ctx.llm_handler:
-                logger.info("Using ctx.llm_handler")
-                llm = ctx.llm_handler
-            else:
-                logger.warning(f"No llm/llm_handler found. Has llm: {hasattr(ctx, 'llm')}, llm_handler: {hasattr(ctx, 'llm_handler')}")
-                # 尝试查找其他可能的 LLM 访问方式
-                for attr in dir(ctx):
-                    if 'llm' in attr.lower():
-                        logger.info(f"Found attribute containing 'llm': {attr}")
-                return []
-            
+            # 使用 context.llm_generate() 方法
+            # 需要先获取 provider_id
             prompt = self._build_breakdown_prompt(task_name)
-            logger.info(f"Calling LLM for breakdown: {task_name}")
-            llm_response = await llm.generate(
-                prompt,
-                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
+            
+            # 获取默认 provider
+            provider = self.context.get_provider_by_id("default")
+            if not provider:
+                # 尝试获取当前使用的 provider
+                provider = self.context.get_using_provider()
+            
+            if not provider:
+                logger.warning("No LLM provider available")
+                return []
+            
+            logger.info(f"Using provider: {type(provider)}")
+            
+            # 调用 LLM
+            llm_resp = await self.context.llm_generate(
+                chat_provider_id="default",
+                prompt=prompt,
             )
             
+            llm_response = llm_resp.completion_text if llm_resp else ""
             logger.info(f"LLM response: {llm_response[:200] if llm_response else 'empty'}...")
             tasks = self._parse_breakdown_result(llm_response)
             logger.info(f"LLM breakdown for '{task_name}': {len(tasks)} tasks")
