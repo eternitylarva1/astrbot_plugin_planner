@@ -2010,6 +2010,19 @@ class PlannerPlugin(Star):
         except Exception as e:
             logger.error(f"LLM breakdown failed: {e}")
             return []
+            
+            prompt = self._build_breakdown_prompt(task_name)
+            llm_response = await self._context.llm.generate(
+                prompt,
+                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
+            )
+            
+            tasks = self._parse_breakdown_result(llm_response)
+            logger.info(f"LLM breakdown for '{task_name}': {len(tasks)} tasks")
+            return tasks
+        except Exception as e:
+            logger.error(f"LLM breakdown failed: {e}")
+            return []
 
     @filter.command("拆解", alias={"分解", "任务拆解"})
     async def cmd_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:

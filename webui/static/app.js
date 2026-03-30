@@ -9,6 +9,36 @@ let currentDate = 'today';
 let currentView = 'tasks';
 let chartLoaded = {};  // Cache loaded charts
 let breakdownTasks = [];  // Current breakdown result
+let breakdownTaskName = '';  // Current breakdown task name
+
+// Load from localStorage
+function loadBreakdownFromStorage() {
+    try {
+        const saved = localStorage.getItem('planner_breakdown');
+        if (saved) {
+            const data = JSON.parse(saved);
+            breakdownTasks = data.tasks || [];
+            breakdownTaskName = data.taskName || '';
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
+function saveBreakdownToStorage() {
+    try {
+        localStorage.setItem('planner_breakdown', JSON.stringify({
+            tasks: breakdownTasks,
+            taskName: breakdownTaskName
+        }));
+    } catch (e) {}
+}
+
+function clearBreakdownInStorage() {
+    try {
+        localStorage.removeItem('planner_breakdown');
+    } catch (e) {}
+}
 
 // DOM Elements
 const taskList = document.getElementById('taskList');
@@ -26,6 +56,13 @@ const inputArea = document.getElementById('inputArea');
 document.addEventListener('DOMContentLoaded', () => {
     loadTasks();
     setupInputHandler();
+    // Load saved breakdown from localStorage
+    if (loadBreakdownFromStorage() && breakdownTasks.length > 0) {
+        document.getElementById('breakdownTitle').textContent = `拆解：${breakdownTaskName}`;
+        renderBreakdownList();
+        document.getElementById('breakdownEmpty').style.display = 'none';
+        document.getElementById('breakdownResult').style.display = 'block';
+    }
 });
 
 /**
@@ -396,10 +433,12 @@ async function breakdownTask() {
         loadingDiv.style.display = 'none';
         
         if (result.code === 0) {
-            // 显示手动输入界面
+            // 显示拆解结果
+            breakdownTaskName = taskName;
+            breakdownTasks = result.data.tasks || [];  // 使用 LLM 返回的任务
             document.getElementById('breakdownTitle').textContent = `拆解：${taskName}`;
-            breakdownTasks = [];
             renderBreakdownList();
+            saveBreakdownToStorage();  // 保存到 localStorage
             resultDiv.style.display = 'block';
         } else {
             showToast(result.message || '拆解失败', 'error');
@@ -455,6 +494,7 @@ function updateBreakdownTask(index, field, value) {
     } else if (field === 'duration') {
         breakdownTasks[index].duration = value;
     }
+    saveBreakdownToStorage();
 }
 
 /**
@@ -463,6 +503,7 @@ function updateBreakdownTask(index, field, value) {
 function deleteBreakdownTask(index) {
     breakdownTasks.splice(index, 1);
     renderBreakdownList();
+    saveBreakdownToStorage();
 }
 
 /**
@@ -474,6 +515,7 @@ function addBreakdownTask() {
         duration: 30
     });
     renderBreakdownList();
+    saveBreakdownToStorage();
 }
 
 /**
@@ -507,6 +549,8 @@ async function importBreakdown() {
             showToast(result.message || `已导入 ${validTasks.length} 个任务`, 'success');
             // 清空拆解结果
             breakdownTasks = [];
+            breakdownTaskName = '';
+            clearBreakdownInStorage();  // 清除 localStorage
             document.getElementById('breakdownInput').value = '';
             document.getElementById('breakdownResult').style.display = 'none';
             document.getElementById('breakdownEmpty').style.display = 'flex';
