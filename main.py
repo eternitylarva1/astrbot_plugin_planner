@@ -735,6 +735,7 @@ class PlannerPlugin(Star):
         """
         # 保存事件 context 供 WebUI 调用 LLM
         self._event_context = event.context
+        logger.info(f"Saved event context, has llm: {hasattr(event.context, 'llm')}")
         
         user_input = _strip_cmd(
             event.message_str, "计划", "添加任务", "新建任务", "安排"
@@ -2005,18 +2006,27 @@ class PlannerPlugin(Star):
                 logger.warning("No context available for LLM call")
                 return []
             
-            if not hasattr(ctx, 'llm') or not ctx.llm:
-                logger.warning("Context has no llm attribute, trying event_context")
-                # 尝试 event_context
-                if self._event_context and hasattr(self._event_context, 'llm'):
-                    ctx = self._event_context
-                else:
-                    logger.warning("No llm available in any context")
-                    return []
+            # 检查 context 的所有属性
+            logger.info(f"Context type: {type(ctx)}")
+            logger.info(f"Context attrs: {[a for a in dir(ctx) if not a.startswith('_')]}")
+            
+            if hasattr(ctx, 'llm') and ctx.llm:
+                logger.info("Using ctx.llm")
+                llm = ctx.llm
+            elif hasattr(ctx, 'llm_handler') and ctx.llm_handler:
+                logger.info("Using ctx.llm_handler")
+                llm = ctx.llm_handler
+            else:
+                logger.warning(f"No llm/llm_handler found. Has llm: {hasattr(ctx, 'llm')}, llm_handler: {hasattr(ctx, 'llm_handler')}")
+                # 尝试查找其他可能的 LLM 访问方式
+                for attr in dir(ctx):
+                    if 'llm' in attr.lower():
+                        logger.info(f"Found attribute containing 'llm': {attr}")
+                return []
             
             prompt = self._build_breakdown_prompt(task_name)
             logger.info(f"Calling LLM for breakdown: {task_name}")
-            llm_response = await ctx.llm.generate(
+            llm_response = await llm.generate(
                 prompt,
                 system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
             )
