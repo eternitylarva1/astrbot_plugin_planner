@@ -106,6 +106,7 @@ class PlannerPlugin(Star):
         self._webui_server: Optional[WebUIServer] = None
         self._webui_start_task: Optional[asyncio.Task] = None
         self._context = context  # 保存 context 供 WebUI 调用 LLM
+        self._event_context = None  # 保存最近的事件 context（包含 llm）
 
         # 状态管理
         self._pending_tasks: Dict[
@@ -732,6 +733,9 @@ class PlannerPlugin(Star):
         /计划 明天9点开会 1小时
         /计划 每天早上运动
         """
+        # 保存事件 context 供 WebUI 调用 LLM
+        self._event_context = event.context
+        
         user_input = _strip_cmd(
             event.message_str, "计划", "添加任务", "新建任务", "安排"
         )
@@ -1994,17 +1998,25 @@ class PlannerPlugin(Star):
     async def _call_llm_breakdown(self, task_name: str) -> List[Dict]:
         """通过 LLM 拆解任务（供 WebUI 调用）"""
         try:
-            if not self._context:
+            # 优先使用事件 context（有 llm），否则用插件 context
+            ctx = self._event_context or self._context
+            
+            if not ctx:
                 logger.warning("No context available for LLM call")
                 return []
             
-            if not hasattr(self._context, 'llm') or not self._context.llm:
-                logger.warning("Context has no llm attribute")
-                return []
+            if not hasattr(ctx, 'llm') or not ctx.llm:
+                logger.warning("Context has no llm attribute, trying event_context")
+                # 尝试 event_context
+                if self._event_context and hasattr(self._event_context, 'llm'):
+                    ctx = self._event_context
+                else:
+                    logger.warning("No llm available in any context")
+                    return []
             
             prompt = self._build_breakdown_prompt(task_name)
             logger.info(f"Calling LLM for breakdown: {task_name}")
-            llm_response = await self._context.llm.generate(
+            llm_response = await ctx.llm.generate(
                 prompt,
                 system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
             )
