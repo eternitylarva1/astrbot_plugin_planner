@@ -1844,24 +1844,32 @@ class PlannerPlugin(Star):
 拆解要求：
 1. 每个子任务控制在 15-30 分钟内
 2. 按逻辑顺序排列
-3. 标注每个子任务预计时长
-4. 标注先后依赖关系（如有）
-5. 识别任务中的"陷阱"或容易出错的地方
+3. 用「- 任务名 (时长)」格式
 
 输出格式：
-## 拆解结果
+- 任务1 (30分钟)
+- 任务2 (20分钟)
+- 任务3 (25分钟)
 
-1. [子任务名称] - [时长]
-   依赖：无 / 需先完成第X项
-   提示：[注意事项，如有]
+只需要输出任务列表，每行一个任务，格式为「- 任务名 (时长)」，不要输出其他内容。"""
 
-2. ...
-
-## 总计
-预计总时长：[X] 小时
-
-## 建议顺序
-先做...再做...最后做..."""
+    def _parse_breakdown_result(self, text: str) -> List[Dict]:
+        """解析拆解结果文本为任务列表"""
+        tasks = []
+        for line in text.strip().split("\n"):
+            line = line.strip()
+            if not line.startswith("-"):
+                continue
+            # 去除 "- " 前缀
+            line = line[2:].strip()
+            # 提取时长 (XX分钟)
+            import re
+            match = re.search(r"\((\d+)分钟\)", line)
+            duration = int(match.group(1)) if match else 30
+            name = re.sub(r"\(\d+分钟\)", "", line).strip()
+            if name:
+                tasks.append({"name": name, "duration": duration})
+        return tasks
 
     @filter.command("拆解", alias={"分解", "任务拆解"})
     async def cmd_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:
@@ -1886,15 +1894,183 @@ class PlannerPlugin(Star):
         try:
             llm_response = await event.context.llm.generate(
                 prompt,
-                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个子任务控制在30分钟以内。"
+                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
             )
-            yield event.plain_result(
-                f"📋 任务拆解：{user_input}\n\n{llm_response}\n\n"
-                f"💡 如需将子任务添加到计划，请说「把以上任务添加到计划」"
-            )
+            
+            # 解析为任务列表
+            tasks = self._parse_breakdown_result(llm_response)
+            
+            # 保存到会话状态
+            session_id = event.unified_msg_origin
+            self._breakdown_results = getattr(self, '_breakdown_results', {})
+            self._breakdown_results[session_id] = {
+                "parent": user_input.strip(),
+                "tasks": tasks,
+                "original": llm_response
+            }
+            
+            # 格式化输出
+            if not tasks:
+                yield event.plain_result(f"📋 任务拆解：{user_input}\n\n{llm_response}")
+                return
+            
+            lines = [f"📋 任务拆解：{user_input}", "", "序号 | 任务名 | 时长"]
+            lines.append("-" * 40)
+            for i, t in enumerate(tasks, 1):
+                lines.append(f"{i} | {t['name']} | {t['duration']}分钟")
+            lines.append("-" * 40)
+            lines.append(f"共 {len(tasks)} 个子任务，预计 {sum(t['duration'] for t in tasks)} 分钟")
+            lines.append("")
+            lines.append("💡 操作指令：")
+            lines.append("• 「添加全部」- 全部添加到计划")
+            lines.append("• 「添加第X项」- 添加单个任务")
+            lines.append("• 「删除第X项」- 删除单个任务")
+            lines.append("• 「修改第X项 名称/时长」- 修改任务")
+            
+            yield event.plain_result("\n".join(lines))
+            
         except Exception as e:
             logger.error(f"breakdown_task failed: {e}")
             yield event.plain_result(f"❌ 拆解失败：{e}")
+
+    @filter.command("添加", alias={"添加任务", "添加子任务"})
+    async def cmd_add_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:
+        """处理拆解结果的添加操作"""
+        user_input = _strip_cmd(event.message_str, "添加", "添加任务", "添加子任务")
+        
+        session_id = event.unified_msg_origin
+        breakdown = getattr(self, '_breakdown_results', {}).get(session_id)
+        
+        if not breakdown:
+            yield event.plain_result("❗ 没有可添加的拆解任务，请先使用 /拆解 命令")
+            return
+        
+        tasks = breakdown.get("tasks", [])
+        if not tasks:
+            yield event.plain_result("❗ 拆解任务为空")
+            return
+        
+        # 解析要添加的任务编号
+        user_input = user_input.strip().lower()
+        
+        # "全部"或"所有" → 添加全部
+        if "全部" in user_input or "所有" in user_input or "都" in user_input:
+            added = []
+            for t in tasks:
+                prep = await self._prepare_task_creation(
+                    event,
+                    t["name"],
+                    None,  # 无具体时间，让系统自动安排
+                    t["duration"],
+                    repeat=None,
+                    interactive=False,
+                )
+                if prep["ok"]:
+                    await self._finalize_task_creation(prep["task"])
+                    added.append(t["name"])
+            yield event.plain_result(f"✅ 已添加 {len(added)} 个任务到计划：{', '.join(added)}")
+            return
+        
+        # 解析单个编号
+        import re
+        match = re.search(r"第(\d+)项", user_input)
+        if match:
+            idx = int(match.group(1)) - 1
+            if 0 <= idx < len(tasks):
+                t = tasks[idx]
+                prep = await self._prepare_task_creation(
+                    event, t["name"], None, t["duration"], repeat=None, interactive=False
+                )
+                if prep["ok"]:
+                    await self._finalize_task_creation(prep["task"])
+                    yield event.plain_result(f"✅ 已添加：{t['name']} ({t['duration']}分钟)")
+                else:
+                    yield event.plain_result(f"❌ 添加失败：{prep.get('message', '未知错误')}")
+                return
+            else:
+                yield event.plain_result(f"❗ 编号 {idx+1} 不在范围内（1-{len(tasks)}）")
+                return
+        
+        yield event.plain_result(
+            "❗ 请指定要添加的任务：\n"
+            "• 「添加全部」- 添加所有任务\n"
+            "• 「添加第1项」- 添加单个任务"
+        )
+
+    @filter.command("删除", alias={"删除任务", "删除子任务"})
+    async def cmd_delete_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:
+        """处理拆解结果的删除操作"""
+        user_input = _strip_cmd(event.message_str, "删除", "删除任务", "删除子任务")
+        
+        session_id = event.unified_msg_origin
+        breakdown = getattr(self, '_breakdown_results', {}).get(session_id)
+        
+        if not breakdown:
+            yield event.plain_result("❗ 没有可删除的拆解任务")
+            return
+        
+        tasks = breakdown.get("tasks", [])
+        import re
+        match = re.search(r"第(\d+)项", user_input)
+        
+        if match:
+            idx = int(match.group(1)) - 1
+            if 0 <= idx < len(tasks):
+                removed = tasks.pop(idx)
+                yield event.plain_result(f"✅ 已删除：{removed['name']}")
+                # 更新保存的状态
+                self._breakdown_results[session_id]["tasks"] = tasks
+                return
+            else:
+                yield event.plain_result(f"❗ 编号 {idx+1} 不在范围内")
+                return
+        
+        yield event.plain_result("❗ 请指定要删除的任务：\n• 「删除第1项」")
+
+    @filter.command("修改", alias={"修改任务", "修改子任务"})
+    async def cmd_modify_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:
+        """处理拆解结果的修改操作"""
+        user_input = _strip_cmd(event.message_str, "修改", "修改任务", "修改子任务")
+        
+        session_id = event.unified_msg_origin
+        breakdown = getattr(self, '_breakdown_results', {}).get(session_id)
+        
+        if not breakdown:
+            yield event.plain_result("❗ 没有可修改的拆解任务")
+            return
+        
+        tasks = breakdown.get("tasks", [])
+        import re
+        match = re.search(r"第(\d+)项", user_input)
+        
+        if match:
+            idx = int(match.group(1)) - 1
+            if 0 <= idx < len(tasks):
+                # 提取修改内容
+                rest = user_input.split("第" + str(idx+1) + "项", 1)
+                if len(rest) > 1:
+                    new_value = rest[1].strip()
+                    # 尝试解析时长
+                    time_match = re.search(r"(\d+)\s*分钟", new_value)
+                    if time_match:
+                        tasks[idx]["duration"] = int(time_match.group(1))
+                        self._breakdown_results[session_id]["tasks"] = tasks
+                        yield event.plain_result(f"✅ 已修改第{idx+1}项时长为 {time_match.group(1)} 分钟")
+                        return
+                    # 否则当作名称
+                    if new_value:
+                        tasks[idx]["name"] = new_value
+                        self._breakdown_results[session_id]["tasks"] = tasks
+                        yield event.plain_result(f"✅ 已修改第{idx+1}项为：{new_value}")
+                        return
+                
+                yield event.plain_result(f"❗ 请输入修改内容：\n• 「修改第1项 60分钟」\n• 「修改第1项 新名称」")
+                return
+            else:
+                yield event.plain_result(f"❗ 编号 {idx+1} 不在范围内")
+                return
+        
+        yield event.plain_result("❗ 请指定要修改的任务：\n• 「修改第1项 新名称」\n• 「修改第1项 30分钟」")
 
     @filter.llm_tool(name="list_planner_tasks")
     async def list_planner_tasks(
