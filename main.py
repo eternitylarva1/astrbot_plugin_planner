@@ -83,6 +83,13 @@ class PlannerPlugin(Star):
             self.storage, self.task_service, self.scheduler_adapter
         )
         self.visualizer = Visualizer()
+        
+        # 调试：打印 context 属性
+        logger.info(f"Context type: {type(context)}")
+        logger.info(f"Context attrs: {[a for a in dir(context) if not a.startswith('_')]}")
+        logger.info(f"Context has llm: {hasattr(context, 'llm')}")
+        if hasattr(context, 'llm'):
+            logger.info(f"Context.llm type: {type(context.llm)}")
 
         # 从配置读取（WebUI 可视化配置，持久化到 data/config/）
         self.config = config
