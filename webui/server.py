@@ -26,6 +26,8 @@ class WebUIServer:
         visualizer,
         port: int = 8099,
         host: str = "0.0.0.0",
+        context=None,
+        plugin=None,
     ):
         self.task_service = task_service
         self.storage = storage_service
@@ -33,6 +35,8 @@ class WebUIServer:
         self.visualizer = visualizer
         self.port = port
         self.host = host
+        self.context = context
+        self.plugin = plugin
         self.app: Optional[web.Application] = None
         self.runner: Optional[web.AppRunner] = None
         self._site: Optional[web.TCPSite] = None
@@ -295,19 +299,27 @@ class WebUIServer:
                 return web.json_response({"code": 1, "message": "任务名称不能为空"}, status=400)
             
             # 调用 LLM 进行拆解
-            prompt = self._build_breakdown_prompt(task_name)
-            
-            # 这里简化处理，直接解析返回的文本
-            # 实际应该调用 LLM，但 WebUI 服务器没有 LLM 接口
-            # 所以返回前端一个提示，让前端用聊天方式处理
-            return web.json_response({
-                "code": 0,
-                "message": "请在聊天框使用 /拆解 命令进行任务拆解",
-                "data": {
-                    "task_name": task_name,
-                    "tasks": []
-                }
-            })
+            if self.plugin and hasattr(self.plugin, '_call_llm_breakdown'):
+                # 使用插件的 LLM 方法
+                tasks = await self.plugin._call_llm_breakdown(task_name)
+                return web.json_response({
+                    "code": 0,
+                    "message": "拆解成功",
+                    "data": {
+                        "task_name": task_name,
+                        "tasks": tasks
+                    }
+                })
+            else:
+                # 如果没有 LLM 接口，返回手动输入模式
+                return web.json_response({
+                    "code": 0,
+                    "message": "请手动添加子任务",
+                    "data": {
+                        "task_name": task_name,
+                        "tasks": []
+                    }
+                })
         except Exception as e:
             logger.error(f"Error in breakdown: {e}")
             return web.json_response({"code": 1, "message": str(e)}, status=500)

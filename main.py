@@ -105,6 +105,7 @@ class PlannerPlugin(Star):
         self._webui_host = config.get("webui_host", "0.0.0.0")
         self._webui_server: Optional[WebUIServer] = None
         self._webui_start_task: Optional[asyncio.Task] = None
+        self._context = context  # 保存 context 供 WebUI 调用 LLM
 
         # 状态管理
         self._pending_tasks: Dict[
@@ -610,6 +611,8 @@ class PlannerPlugin(Star):
                 visualizer=self.visualizer,
                 port=self._webui_port,
                 host=self._webui_host,
+                context=self._context,
+                plugin=self,  # 传递 plugin 引用以便调用 LLM
             )
             await self._webui_server.start()
             logger.info(f"WebUI server started on http://{self._webui_host}:{self._webui_port}")
@@ -1987,6 +1990,26 @@ class PlannerPlugin(Star):
             if name:
                 tasks.append({"name": name, "duration": duration})
         return tasks
+
+    async def _call_llm_breakdown(self, task_name: str) -> List[Dict]:
+        """通过 LLM 拆解任务（供 WebUI 调用）"""
+        try:
+            if not self._context:
+                logger.warning("No context available for LLM call")
+                return []
+            
+            prompt = self._build_breakdown_prompt(task_name)
+            llm_response = await self._context.llm.generate(
+                prompt,
+                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
+            )
+            
+            tasks = self._parse_breakdown_result(llm_response)
+            logger.info(f"LLM breakdown for '{task_name}': {len(tasks)} tasks")
+            return tasks
+        except Exception as e:
+            logger.error(f"LLM breakdown failed: {e}")
+            return []
 
     @filter.command("拆解", alias={"分解", "任务拆解"})
     async def cmd_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:

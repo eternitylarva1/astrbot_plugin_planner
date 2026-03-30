@@ -2,6 +2,12 @@
 
 本文档记录 `astrbot_plugin_planner` 的功能更新。
 
+## [1.3.3] - 2026-03-31
+
+### Added
+- WebUI 拆解功能现在支持调用 AstrBot LLM 进行智能拆解
+- 拆解结果可直接在 WebUI 中修改后再导入
+
 ## [1.3.2] - 2026-03-31
 
 ### Added
