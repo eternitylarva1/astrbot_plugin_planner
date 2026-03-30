@@ -715,3 +715,75 @@ class LearningService:
                 parts.append(f"- 备注: {note}")
 
         return "\n".join(parts) if parts else ""
+
+    async def organize_habits(self) -> Dict[str, Any]:
+        """整理习惯数据：用 LLM 识别相似任务并归类
+        
+        返回归类建议，供 LLM 或用户确认后执行
+        """
+        data = await self._ensure_data()
+        
+        if not data.task_durations:
+            return {
+                "ok": False,
+                "message": "暂无习惯数据可整理",
+                "groups": []
+            }
+        
+        # 收集所有任务名和统计
+        task_list = []
+        for name, stats in data.task_durations.items():
+            task_list.append({
+                "name": name,
+                "count": _safe_int(stats.count),
+                "avg_duration": round(_safe_float(stats.actual_avg)),
+                "default": _safe_int(stats.default_minutes),
+            })
+        
+        # 按出现次数排序
+        task_list.sort(key=lambda x: x["count"], reverse=True)
+        
+        # 构建 LLM 分析用的提示
+        prompt = self._build_organize_prompt(task_list)
+        
+        return {
+            "ok": True,
+            "prompt": prompt,
+            "task_count": len(task_list),
+            "tasks": task_list
+        }
+    
+    def _build_organize_prompt(self, task_list: List[Dict]) -> str:
+        """构建整理习惯的 LLM 分析提示"""
+        task_lines = []
+        for i, t in enumerate(task_list):
+            task_lines.append(f"{i+1}. {t['name']} (出现{t['count']}次, 平均{t['avg_duration']}分钟)")
+        
+        tasks_text = "\n".join(task_lines)
+        
+        return f"""你是一个任务习惯分析专家。请分析以下任务列表，识别出可能是同一个习惯的任务，并给出归类建议。
+
+任务列表：
+{tasks_text}
+
+请按以下格式输出分析结果：
+
+## 习惯分组
+
+对于每组相似任务，给出：
+- 合并后的标准名称
+- 包含的原始任务名
+- 合并理由
+
+## 需要删除的别名
+
+列出应该删除的冗余别名。
+
+## 建议
+
+给出其他优化建议。
+
+请确保：
+1. 只有真正相似的任务才合并（语义相同或非常接近）
+2. 保留有意义的区分（如"晨跑"和"夜跑"是不同的）
+3. 合并时选择一个最能代表该习惯的名称作为主名称"""

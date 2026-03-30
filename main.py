@@ -1751,6 +1751,58 @@ class PlannerPlugin(Star):
             "set_planner_config 可设：timeout_seconds, remind_before, auto_plan_on_missing_time, avoid_past_time, ai_default_duration_minutes, habit_planning_enabled, habit_weight, suggestion_count, max_daily_minutes, learning_confidence_threshold。"
         )
 
+    @filter.llm_tool(name="organize_habits")
+    async def organize_habits(self, event: AstrMessageEvent) -> str:
+        """整理习惯数据：用 LLM 分析相似任务并归类。
+
+        当用户说"整理习惯"、"整理任务"、"归类任务"时调用。
+        LLM 会分析所有学习到的任务，识别相似任务并给出归类建议。
+        """
+        result = await self.learning_service.organize_habits()
+        
+        if not result["ok"]:
+            return result["message"]
+        
+        prompt = result["prompt"]
+        
+        # 调用 LLM 分析（通过 AstrBot 的 LLM 接口）
+        try:
+            llm_response = await event.context.llm.generate(
+                prompt,
+                system="你是一个任务习惯分析专家。请分析任务列表，识别相似任务并给出归类建议。"
+            )
+            return f"📊 习惯整理分析结果：\n\n{llm_response}"
+        except Exception as e:
+            logger.error(f"LLM organize_habits failed: {e}")
+            return f"❌ 分析失败：{e}\n\n提示：请检查 LLM 配置是否正常。"
+
+    @filter.command("整理习惯", alias={"归类任务", "整理任务"})
+    async def cmd_organize_habits(self, event: AstrMessageEvent) -> MessageEventResult:
+        """整理习惯数据：分析相似任务并归类"""
+        yield event.plain_result("🔄 正在分析习惯数据...")
+        
+        result = await self.learning_service.organize_habits()
+        
+        if not result["ok"]:
+            yield event.plain_result(result["message"])
+            return
+        
+        prompt = result["prompt"]
+        task_count = result["task_count"]
+        
+        try:
+            llm_response = await event.context.llm.generate(
+                prompt,
+                system="你是一个任务习惯分析专家。请分析任务列表，识别相似任务并给出归类建议。"
+            )
+            yield event.plain_result(
+                f"📊 习惯整理分析（{task_count}个任务）：\n\n{llm_response}\n\n"
+                f"💡 如需执行归类合并，请告诉我要合并哪些任务。"
+            )
+        except Exception as e:
+            logger.error(f"organize_habits failed: {e}")
+            yield event.plain_result(f"❌ 分析失败：{e}")
+
     @filter.llm_tool(name="list_planner_tasks")
     async def list_planner_tasks(
         self,
