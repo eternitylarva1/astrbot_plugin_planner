@@ -1,5 +1,5 @@
 /**
- * Planner WebUI - Frontend Logic
+ * Planner WebUI - Frontend Logic (Sliding View)
  */
 
 const API_BASE = '';
@@ -7,13 +7,16 @@ const API_BASE = '';
 // State
 let currentDate = 'today';
 let currentView = 'tasks';
+let chartLoaded = {};  // Cache loaded charts
 
 // DOM Elements
 const taskList = document.getElementById('taskList');
-const loading = document.getElementById('loading');
 const emptyState = document.getElementById('emptyState');
 const taskInput = document.getElementById('taskInput');
 const toast = document.getElementById('toast');
+const viewContainer = document.getElementById('viewContainer');
+const chartFrame = document.getElementById('chartFrame');
+const chartLoading = document.getElementById('chartLoading');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -47,20 +50,25 @@ function switchDate(date) {
 }
 
 /**
- * Switch view between tasks and chart
+ * Switch view between tasks and chart (sliding)
  */
 function switchView(view) {
     currentView = view;
     
+    // Update tab bar buttons
     document.querySelectorAll('.tab-item').forEach(tab => {
-        const tabView = tab.querySelector('.tab-label').textContent === '任务' ? 'tasks' : 'chart';
+        const tabView = tab.dataset.view;
         tab.classList.toggle('active', tabView === view);
     });
     
-    if (view === 'tasks') {
-        loadTasks();
+    // Toggle sliding view
+    if (view === 'chart') {
+        viewContainer.classList.add('show-chart');
+        // Load chart if not cached
+        const chartDate = document.querySelector('.chart-tab.active')?.dataset.date || 'today';
+        loadChart(chartDate);
     } else {
-        showChart();
+        viewContainer.classList.remove('show-chart');
     }
 }
 
@@ -68,7 +76,12 @@ function switchView(view) {
  * Load tasks from API
  */
 async function loadTasks() {
-    showLoading();
+    taskList.innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>加载中...</p>
+        </div>
+    `;
     
     try {
         const response = await fetch(`${API_BASE}/api/tasks?date=${currentDate}`);
@@ -91,8 +104,6 @@ async function loadTasks() {
  * Render tasks to DOM
  */
 function renderTasks(tasks) {
-    hideLoading();
-    
     if (!tasks || tasks.length === 0) {
         taskList.innerHTML = '';
         emptyState.style.display = 'flex';
@@ -250,7 +261,6 @@ async function toggleTask(taskId) {
     const isCompleted = taskEl.classList.contains('completed');
     
     if (isCompleted) {
-        // Cannot uncomplete
         return;
     }
     
@@ -301,24 +311,7 @@ async function cancelTask(taskId) {
 }
 
 /**
- * Show chart modal
- */
-function showChart() {
-    const modal = document.getElementById('chartModal');
-    modal.classList.add('show');
-    loadChart('today');
-}
-
-/**
- * Close chart modal
- */
-function closeChart() {
-    const modal = document.getElementById('chartModal');
-    modal.classList.remove('show');
-}
-
-/**
- * Load chart
+ * Load chart into iframe
  */
 async function loadChart(date) {
     // Update tab buttons
@@ -326,39 +319,43 @@ async function loadChart(date) {
         btn.classList.toggle('active', btn.dataset.date === date);
     });
     
-    const container = document.getElementById('chartContainer');
-    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    // Show loading
+    chartLoading.style.display = 'flex';
+    chartFrame.style.display = 'none';
+    
+    // Check cache
+    const cacheKey = date;
+    if (chartLoaded[cacheKey]) {
+        chartFrame.srcdoc = chartLoaded[cacheKey];
+        chartLoading.style.display = 'none';
+        chartFrame.style.display = 'block';
+        return;
+    }
     
     try {
         const response = await fetch(`${API_BASE}/api/chart?date=${date}`);
         const html = await response.text();
         
-        // Check if response is HTML with content
         if (html && html.length > 100) {
-            container.innerHTML = `<iframe srcdoc="${escapeHtml(html)}"></iframe>`;
+            // Cache the HTML
+            chartLoaded[cacheKey] = html;
+            
+            // Load into iframe
+            chartFrame.srcdoc = html;
+            chartFrame.onload = () => {
+                chartLoading.style.display = 'none';
+                chartFrame.style.display = 'block';
+            };
         } else {
-            container.innerHTML = '<div class="empty-state"><p>暂无图表数据</p></div>';
+            chartLoading.innerHTML = '<p>暂无图表数据</p>';
         }
     } catch (error) {
         console.error('Error loading chart:', error);
-        container.innerHTML = '<div class="empty-state"><p>加载失败</p></div>';
+        chartLoading.innerHTML = '<p>加载失败</p>';
     }
 }
 
 // ============ Utility Functions ============
-
-function showLoading() {
-    taskList.innerHTML = `
-        <div class="loading">
-            <div class="spinner"></div>
-            <p>加载中...</p>
-        </div>
-    `;
-}
-
-function hideLoading() {
-    // Loading is hidden when tasks are rendered
-}
 
 function showToast(message, type = 'info') {
     toast.textContent = message;
