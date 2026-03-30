@@ -146,13 +146,26 @@ body {
     display: none;
 }
 
-/* When view is 'chart', slide to show chart panel */
+/* When view is 'chart', slide to show chart panel (2nd position) */
 #viewContainer.show-chart #tasksPanel {
     transform: translateX(-100%);
 }
 
 #viewContainer.show-chart #chartPanel {
     transform: translateX(-100%);
+}
+
+/* When view is 'breakdown', slide to show breakdown panel (3rd position) */
+#viewContainer.show-breakdown #tasksPanel {
+    transform: translateX(-200%);
+}
+
+#viewContainer.show-breakdown #chartPanel {
+    transform: translateX(-200%);
+}
+
+#viewContainer.show-breakdown #breakdownPanel {
+    transform: translateX(-200%);
 }
 
 /* ============ Task List ============ */
@@ -516,4 +529,206 @@ body {
     .chart-wrapper {
         height: calc(100vh - 250px);
     }
+}
+
+/* ============ Breakdown View ============ */
+#breakdownPanel {
+    padding: 0;
+    overflow-y: auto;
+}
+
+.breakdown-input-area {
+    padding: 16px;
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.breakdown-input-wrapper {
+    display: flex;
+    gap: 10px;
+}
+
+.breakdown-input-wrapper input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid var(--gray-200);
+    border-radius: 12px;
+    font-size: 16px;
+    outline: none;
+}
+
+.breakdown-input-wrapper input:focus {
+    border-color: var(--primary);
+}
+
+.breakdown-btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.breakdown-result {
+    padding: 16px;
+}
+
+.breakdown-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.breakdown-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--gray-800);
+}
+
+.action-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--success);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.breakdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.breakdown-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+
+.breakdown-item-index {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.breakdown-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.breakdown-item-name {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    font-size: 15px;
+    margin-bottom: 6px;
+    outline: none;
+}
+
+.breakdown-item-name:focus {
+    border-color: var(--primary);
+}
+
+.breakdown-item-duration {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--gray-500);
+}
+
+.breakdown-item-time {
+    width: 60px;
+    padding: 6px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.breakdown-item-time:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
+.breakdown-item-delete {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(245, 101, 101, 0.1);
+    color: var(--danger);
+    font-size: 16px;
+    cursor: pointer;
+    margin-left: 10px;
+    flex-shrink: 0;
+}
+
+.breakdown-add {
+    margin-top: 16px;
+}
+
+.add-task-btn {
+    width: 100%;
+    padding: 14px;
+    border: 2px dashed var(--gray-300);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--gray-500);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.add-task-btn:active {
+    background: var(--gray-100);
+}
+
+.breakdown-empty,
+.breakdown-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.breakdown-empty .empty-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.breakdown-empty p {
+    font-size: 18px;
+    color: var(--gray-600);
+    margin-bottom: 8px;
+}
+
+.breakdown-empty-hint {
+    font-size: 14px;
+    color: var(--gray-500);
+    text-align: center;
+    padding: 20px;
 }
