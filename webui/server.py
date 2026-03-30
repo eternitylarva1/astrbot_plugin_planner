@@ -299,9 +299,12 @@ class WebUIServer:
                 return web.json_response({"code": 1, "message": "任务名称不能为空"}, status=400)
             
             # 调用 LLM 进行拆解
+            logger.info(f"Breakdown request: plugin={self.plugin}, has_method={hasattr(self.plugin, '_call_llm_breakdown') if self.plugin else 'N/A'}")
+            
             if self.plugin and hasattr(self.plugin, '_call_llm_breakdown'):
                 # 使用插件的 LLM 方法
                 tasks = await self.plugin._call_llm_breakdown(task_name)
+                logger.info(f"Breakdown result: {len(tasks)} tasks")
                 return web.json_response({
                     "code": 0,
                     "message": "拆解成功",
@@ -312,6 +315,7 @@ class WebUIServer:
                 })
             else:
                 # 如果没有 LLM 接口，返回手动输入模式
+                logger.warning("Plugin or method not available, returning manual mode")
                 return web.json_response({
                     "code": 0,
                     "message": "请手动添加子任务",
