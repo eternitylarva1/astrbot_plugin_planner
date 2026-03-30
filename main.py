@@ -25,6 +25,7 @@ from .services.learning_service import LearningService
 from .models.task import Task, GoalState, GoalTask
 from .utils.time_parser import TimeParser
 from .utils.visualizer import Visualizer
+from .webui import WebUIServer
 
 
 def _strip_cmd(text: str, *aliases: str) -> str:
@@ -98,13 +99,24 @@ class PlannerPlugin(Star):
             config.get("learning_confidence_threshold", 0.35)
         )
 
+        # WebUI 配置
+        self._webui_enabled = config.get("webui_enabled", True)
+        self._webui_port = int(config.get("webui_port", 8099))
+        self._webui_host = config.get("webui_host", "0.0.0.0")
+        self._webui_server: Optional[WebUIServer] = None
+        self._webui_start_task: Optional[asyncio.Task] = None
+
         # 状态管理
         self._pending_tasks: Dict[
             str, Dict
         ] = {}  # session_id -> 等待确认的任务（带 pending_at 时间戳）
         self._goal_states: Dict[str, GoalState] = {}  # session_id -> 目标状态
+        self._breakdown_plans: Dict[str, Dict] = {}  # session_id -> 拆解方案 {name, tasks, saved}
         self._runtime_init_done = False
         self._runtime_init_lock = asyncio.Lock()
+
+        # 启动 WebUI 服务器
+        self._start_webui_server()
 
         logger.info("计划助手插件已加载")
 
@@ -564,7 +576,46 @@ class PlannerPlugin(Star):
     async def terminate(self):
         """插件卸载时调用"""
         await self.reminder_service.stop()
+        await self._stop_webui_server()
         logger.info("计划助手插件已卸载")
+
+    def _start_webui_server(self):
+        """启动 WebUI HTTP 服务器（延迟启动，由命令触发）"""
+        if not self._webui_enabled:
+            logger.info("WebUI server is disabled, use /webui to start")
+            return
+
+        logger.info("WebUI server available, use /webui 启动 to start")
+
+    async def _start_webui_async(self):
+        """异步启动 WebUI HTTP 服务器"""
+        if self._webui_server and self._webui_server._running:
+            logger.warning("WebUI server already running")
+            return
+
+        try:
+            self._webui_server = WebUIServer(
+                task_service=self.task_service,
+                storage_service=self.storage,
+                learning_service=self.learning_service,
+                visualizer=self.visualizer,
+                port=self._webui_port,
+                host=self._webui_host,
+            )
+            await self._webui_server.start()
+            logger.info(f"WebUI server started on http://{self._webui_host}:{self._webui_port}")
+        except Exception as e:
+            logger.error(f"Failed to start WebUI server: {e}")
+            raise
+
+    async def _stop_webui_server(self):
+        """停止 WebUI HTTP 服务器"""
+        if self._webui_server:
+            try:
+                await self._webui_server.stop()
+                logger.info("WebUI server stopped")
+            except Exception as e:
+                logger.error(f"Error stopping WebUI server: {e}")
 
     async def _render_schedule_by_text(
         self, query_text: str, event: AstrMessageEvent
@@ -815,6 +866,63 @@ class PlannerPlugin(Star):
         )
         async for msg in self._render_schedule_by_text(user_input, event):
             yield msg
+
+    @filter.command("webui", alias={"WebUI", "网页", "手机端"})
+    async def webui_command(self, event: AstrMessageEvent) -> MessageEventResult:
+        """启动/查看 WebUI 界面
+
+        用法：
+        /webui 启动
+        /webui 停止
+        /webui 状态
+        """
+        user_input = _strip_cmd(event.message_str, "webui", "WebUI", "网页", "手机端").strip().lower()
+
+        if not user_input or user_input == "启动":
+            if self._webui_server and self._webui_server._running:
+                yield event.plain_result(
+                    f"✅ WebUI 已运行中\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"🌐 访问地址：http://你的IP:8099\n\n"
+                    f"请将「你的IP」替换为服务器的实际 IP 地址"
+                )
+            else:
+                # 尝试启动
+                try:
+                    await self._start_webui_async()
+                    yield event.plain_result(
+                        f"✅ WebUI 已启动\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"🌐 访问地址：http://你的IP:8099\n\n"
+                        f"请将「你的IP」替换为服务器的实际 IP 地址\n\n"
+                        f"注意：如果使用 0.0.0.0，在手机访问需要使用服务器的实际局域网 IP"
+                    )
+                except Exception as e:
+                    yield event.plain_result(f"❌ 启动失败：{e}")
+            return
+
+        if user_input == "停止":
+            await self._stop_webui_server()
+            yield event.plain_result("✅ WebUI 已停止")
+            return
+
+        if user_input == "状态":
+            if self._webui_server and self._webui_server._running:
+                yield event.plain_result(
+                    f"✅ WebUI 运行中\n端口：{self._webui_port}\n"
+                    f"访问地址：http://你的IP:8099"
+                )
+            else:
+                yield event.plain_result("❌ WebUI 未启动\n使用 /webui 启动 来启动 WebUI")
+            return
+
+        yield event.plain_result(
+            "📋 WebUI 命令\n"
+            "━━━━━━━━━━━━━━━\n"
+            "• /webui 启动 - 启动 WebUI\n"
+            "• /webui 停止 - 停止 WebUI\n"
+            "• /webui 状态 - 查看状态"
+        )
 
     @filter.command("完成", alias={"done", "已完成"})
     async def complete_task(self, event: AstrMessageEvent) -> MessageEventResult:
@@ -1900,19 +2008,18 @@ class PlannerPlugin(Star):
             # 解析为任务列表
             tasks = self._parse_breakdown_result(llm_response)
             
-            # 保存到会话状态
-            session_id = event.unified_msg_origin
-            self._breakdown_results = getattr(self, '_breakdown_results', {})
-            self._breakdown_results[session_id] = {
-                "parent": user_input.strip(),
-                "tasks": tasks,
-                "original": llm_response
-            }
-            
             # 格式化输出
             if not tasks:
                 yield event.plain_result(f"📋 任务拆解：{user_input}\n\n{llm_response}")
                 return
+            
+            # 保存到会话状态（临时）
+            session_id = event.unified_msg_origin
+            self._breakdown_plans[session_id] = {
+                "parent": user_input.strip(),
+                "tasks": tasks,
+                "saved": False
+            }
             
             lines = [f"📋 任务拆解：{user_input}", "", "序号 | 任务名 | 时长"]
             lines.append("-" * 40)
@@ -1922,10 +2029,8 @@ class PlannerPlugin(Star):
             lines.append(f"共 {len(tasks)} 个子任务，预计 {sum(t['duration'] for t in tasks)} 分钟")
             lines.append("")
             lines.append("💡 操作指令：")
-            lines.append("• 「添加全部」- 全部添加到计划")
-            lines.append("• 「添加第X项」- 添加单个任务")
-            lines.append("• 「删除第X项」- 删除单个任务")
-            lines.append("• 「修改第X项 名称/时长」- 修改任务")
+            lines.append("• 「保存方案」- 保存方案后可编辑")
+            lines.append("• 「完成导入」- 直接导入到任务")
             
             yield event.plain_result("\n".join(lines))
             
@@ -1933,69 +2038,141 @@ class PlannerPlugin(Star):
             logger.error(f"breakdown_task failed: {e}")
             yield event.plain_result(f"❌ 拆解失败：{e}")
 
-    @filter.command("添加", alias={"添加任务", "添加子任务"})
-    async def cmd_add_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:
-        """处理拆解结果的添加操作"""
-        user_input = _strip_cmd(event.message_str, "添加", "添加任务", "添加子任务")
-        
+    @filter.command("保存方案")
+    async def cmd_save_plan(self, event: AstrMessageEvent) -> MessageEventResult:
+        """保存拆解方案"""
         session_id = event.unified_msg_origin
-        breakdown = getattr(self, '_breakdown_results', {}).get(session_id)
+        plan = self._breakdown_plans.get(session_id)
         
-        if not breakdown:
-            yield event.plain_result("❗ 没有可添加的拆解任务，请先使用 /拆解 命令")
+        if not plan:
+            yield event.plain_result("❗ 没有可保存的方案，请先使用 /拆解 命令")
             return
         
-        tasks = breakdown.get("tasks", [])
+        plan["saved"] = True
+        tasks = plan.get("tasks", [])
+        
+        lines = [f"✅ 方案已保存：{plan['parent']}", "", "序号 | 任务名 | 时长"]
+        lines.append("-" * 40)
+        for i, t in enumerate(tasks, 1):
+            lines.append(f"{i} | {t['name']} | {t['duration']}分钟")
+        lines.append("-" * 40)
+        lines.append(f"共 {len(tasks)} 个子任务")
+        lines.append("")
+        lines.append("💡 可用指令：")
+        lines.append("• 「编辑方案」- 用 AI 编辑方案")
+        lines.append("• 「完成导入」- 导入到任务")
+        lines.append("• 「取消」- 取消并删除方案")
+        
+        yield event.plain_result("\n".join(lines))
+
+    @filter.command("编辑方案")
+    async def cmd_edit_plan(self, event: AstrMessageEvent) -> MessageEventResult:
+        """用 LLM 编辑拆解方案"""
+        session_id = event.unified_msg_origin
+        plan = self._breakdown_plans.get(session_id)
+        
+        if not plan or not plan.get("saved"):
+            yield event.plain_result("❗ 没有已保存的方案，请先「保存方案」")
+            return
+        
+        user_input = _strip_cmd(event.message_str, "编辑方案")
+        if not user_input:
+            yield event.plain_result(
+                "请说明要如何修改：\n"
+                "• 「编辑方案 把任务1和任务2合并」\n"
+                "• 「编辑方案 把所有时长改成20分钟」\n"
+                "• 「编辑方案 在开头加一个准备任务」"
+            )
+            return
+        
+        yield event.plain_result("🔄 正在用 AI 编辑方案...")
+        
+        # 构建编辑提示
+        tasks = plan.get("tasks", [])
+        task_list = "\n".join([f"{i+1}. {t['name']} ({t['duration']}分钟)" for i, t in enumerate(tasks)])
+        
+        edit_prompt = f"""当前方案：
+{task_list}
+
+用户要求：{user_input}
+
+请根据用户要求修改方案，输出格式：
+- 任务名1 (时长)
+- 任务名2 (时长)
+
+只输出修改后的任务列表，每行一个，格式为「- 任务名 (时长)」。"""
+
+        try:
+            llm_response = await event.context.llm.generate(
+                edit_prompt,
+                system="你是一个任务拆解专家。根据用户要求修改任务列表。只输出Markdown列表格式。"
+            )
+            
+            # 解析新任务列表
+            new_tasks = self._parse_breakdown_result(llm_response)
+            
+            if new_tasks:
+                plan["tasks"] = new_tasks
+                self._breakdown_plans[session_id] = plan
+            
+            # 显示修改后的方案
+            lines = [f"✅ 方案已更新", "", "序号 | 任务名 | 时长"]
+            lines.append("-" * 40)
+            for i, t in enumerate(new_tasks, 1):
+                lines.append(f"{i} | {t['name']} | {t['duration']}分钟")
+            lines.append("-" * 40)
+            lines.append(f"共 {len(new_tasks)} 个子任务")
+            lines.append("")
+            lines.append("💡 可继续编辑或「完成导入」")
+            
+            yield event.plain_result("\n".join(lines))
+            
+        except Exception as e:
+            logger.error(f"edit_plan failed: {e}")
+            yield event.plain_result(f"❌ 编辑失败：{e}")
+
+    @filter.command("完成导入")
+    async def cmd_finish_import(self, event: AstrMessageEvent) -> MessageEventResult:
+        """完成导入，将方案导入到任务"""
+        session_id = event.unified_msg_origin
+        plan = self._breakdown_plans.get(session_id)
+        
+        if not plan:
+            yield event.plain_result("❗ 没有可导入的方案，请先使用 /拆解 命令")
+            return
+        
+        tasks = plan.get("tasks", [])
         if not tasks:
-            yield event.plain_result("❗ 拆解任务为空")
+            yield event.plain_result("❗ 方案为空，无法导入")
             return
         
-        # 解析要添加的任务编号
-        user_input = user_input.strip().lower()
+        added = []
+        for t in tasks:
+            prep = await self._prepare_task_creation(
+                event, t["name"], None, t["duration"], repeat=None, interactive=False
+            )
+            if prep["ok"]:
+                await self._finalize_task_creation(prep["task"])
+                added.append(t["name"])
         
-        # "全部"或"所有" → 添加全部
-        if "全部" in user_input or "所有" in user_input or "都" in user_input:
-            added = []
-            for t in tasks:
-                prep = await self._prepare_task_creation(
-                    event,
-                    t["name"],
-                    None,  # 无具体时间，让系统自动安排
-                    t["duration"],
-                    repeat=None,
-                    interactive=False,
-                )
-                if prep["ok"]:
-                    await self._finalize_task_creation(prep["task"])
-                    added.append(t["name"])
-            yield event.plain_result(f"✅ 已添加 {len(added)} 个任务到计划：{', '.join(added)}")
-            return
-        
-        # 解析单个编号
-        import re
-        match = re.search(r"第(\d+)项", user_input)
-        if match:
-            idx = int(match.group(1)) - 1
-            if 0 <= idx < len(tasks):
-                t = tasks[idx]
-                prep = await self._prepare_task_creation(
-                    event, t["name"], None, t["duration"], repeat=None, interactive=False
-                )
-                if prep["ok"]:
-                    await self._finalize_task_creation(prep["task"])
-                    yield event.plain_result(f"✅ 已添加：{t['name']} ({t['duration']}分钟)")
-                else:
-                    yield event.plain_result(f"❌ 添加失败：{prep.get('message', '未知错误')}")
-                return
-            else:
-                yield event.plain_result(f"❗ 编号 {idx+1} 不在范围内（1-{len(tasks)}）")
-                return
+        # 清理方案
+        del self._breakdown_plans[session_id]
         
         yield event.plain_result(
-            "❗ 请指定要添加的任务：\n"
-            "• 「添加全部」- 添加所有任务\n"
-            "• 「添加第1项」- 添加单个任务"
+            f"✅ 已导入 {len(added)} 个任务到计划：\n" +
+            "\n".join([f"• {a}" for a in added])
         )
+
+    @filter.command("取消", alias={"取消方案"})
+    async def cmd_cancel_plan(self, event: AstrMessageEvent) -> MessageEventResult:
+        """取消方案"""
+        session_id = event.unified_msg_origin
+        
+        if session_id in self._breakdown_plans:
+            del self._breakdown_plans[session_id]
+            yield event.plain_result("✅ 方案已取消")
+        else:
+            yield event.plain_result("❗ 没有可取消的方案")
 
     @filter.command("删除", alias={"删除任务", "删除子任务"})
     async def cmd_delete_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:

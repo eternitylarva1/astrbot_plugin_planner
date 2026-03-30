@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>计划助手</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>📋 计划助手</h1>
+            </div>
+            <div class="header-right">
+                <button class="icon-btn" onclick="showChart()" title="查看图表">📊</button>
+            </div>
+        </header>
+
+        <!-- Date Tabs -->
+        <nav class="date-tabs">
+            <button class="tab-btn active" data-date="today" onclick="switchDate('today')">今天</button>
+            <button class="tab-btn" data-date="tomorrow" onclick="switchDate('tomorrow')">明天</button>
+            <button class="tab-btn" data-date="week" onclick="switchDate('week')">本周</button>
+        </nav>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar" id="statsBar">
+            <div class="stat-item">
+                <span class="stat-num" id="statTotal">0</span>
+                <span class="stat-label">总任务</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-num" id="statCompleted">0</span>
+                <span class="stat-label">已完成</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-num" id="statPending">0</span>
+                <span class="stat-label">待办</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-num" id="statRate">0%</span>
+                <span class="stat-label">完成率</span>
+            </div>
+        </div>
+
+        <!-- Task List -->
+        <div class="task-list" id="taskList">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>加载中...</p>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-icon">📭</div>
+            <p>暂无任务</p>
+            <p class="empty-hint">在下方输入框创建新任务</p>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-wrapper">
+                <input 
+                    type="text" 
+                    id="taskInput" 
+                    placeholder="输入任务描述，如：明天下午3点写代码2小时"
+                    autocomplete="off"
+                >
+                <button class="send-btn" onclick="createTask()">➕</button>
+            </div>
+            <p class="input-hint">支持自然语言：明天下午写代码、30分钟后开会1小时</p>
+        </div>
+
+        <!-- Tab Bar -->
+        <nav class="tab-bar">
+            <button class="tab-item active" onclick="switchView('tasks')">
+                <span class="tab-icon">📋</span>
+                <span class="tab-label">任务</span>
+            </button>
+            <button class="tab-item" onclick="switchView('chart')">
+                <span class="tab-icon">📊</span>
+                <span class="tab-label">图表</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Chart Modal -->
+    <div class="modal" id="chartModal">
+        <div class="modal-header">
+            <h2>日程图表</h2>
+            <button class="close-btn" onclick="closeChart()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="chart-tabs">
+                <button class="chart-tab active" data-date="today" onclick="loadChart('today')">今天</button>
+                <button class="chart-tab" data-date="tomorrow" onclick="loadChart('tomorrow')">明天</button>
+                <button class="chart-tab" data-date="week" onclick="loadChart('week')">本周</button>
+            </div>
+            <div class="chart-container" id="chartContainer">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
