@@ -1803,6 +1803,99 @@ class PlannerPlugin(Star):
             logger.error(f"organize_habits failed: {e}")
             yield event.plain_result(f"❌ 分析失败：{e}")
 
+    @filter.llm_tool(name="breakdown_task")
+    async def breakdown_task(
+        self,
+        event: AstrMessageEvent,
+        task_name: str,
+        target_date: Optional[str] = None,
+    ) -> str:
+        """将大任务拆解为可执行的小任务（LLM 工具）。
+
+        当用户说"拆解xxx"、"分解xxx"、"xxx包含什么"时调用。
+
+        Args:
+            task_name(string): 要拆解的任务名称。
+            target_date(string): 可选的目标日期，如"今天"、"明天"、"本周"等。
+        """
+        if not task_name or not task_name.strip():
+            return "请提供要拆解的任务名称。"
+        
+        prompt = self._build_breakdown_prompt(task_name.strip(), target_date)
+        
+        try:
+            llm_response = await event.context.llm.generate(
+                prompt,
+                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个子任务控制在30分钟以内。"
+            )
+            return f"📋 任务拆解：{task_name}\n\n{llm_response}"
+        except Exception as e:
+            logger.error(f"LLM breakdown_task failed: {e}")
+            return f"❌ 拆解失败：{e}"
+
+    def _build_breakdown_prompt(self, task_name: str, target_date: Optional[str] = None) -> str:
+        """构建任务拆解的 LLM 提示"""
+        date_hint = f"\n目标完成时间：{target_date}" if target_date else ""
+        
+        return f"""请将以下任务拆解成具体可执行的子任务：
+
+任务：{task_name}{date_hint}
+
+拆解要求：
+1. 每个子任务控制在 15-30 分钟内
+2. 按逻辑顺序排列
+3. 标注每个子任务预计时长
+4. 标注先后依赖关系（如有）
+5. 识别任务中的"陷阱"或容易出错的地方
+
+输出格式：
+## 拆解结果
+
+1. [子任务名称] - [时长]
+   依赖：无 / 需先完成第X项
+   提示：[注意事项，如有]
+
+2. ...
+
+## 总计
+预计总时长：[X] 小时
+
+## 建议顺序
+先做...再做...最后做..."""
+
+    @filter.command("拆解", alias={"分解", "任务拆解"})
+    async def cmd_breakdown_task(self, event: AstrMessageEvent) -> MessageEventResult:
+        """将大任务拆解为可执行的小任务"""
+        user_input = _strip_cmd(event.message_str, "拆解", "分解", "任务拆解")
+        
+        if not user_input:
+            yield event.plain_result(
+                "❗参数缺失\n"
+                "用法：/拆解 <任务名称>\n"
+                "示例：\n"
+                "• /拆解 完成毕业论文\n"
+                "• /拆解 准备技术面试\n"
+                "• /拆解 开发用户登录模块"
+            )
+            return
+        
+        yield event.plain_result("🔄 正在拆解任务...")
+        
+        prompt = self._build_breakdown_prompt(user_input.strip())
+        
+        try:
+            llm_response = await event.context.llm.generate(
+                prompt,
+                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个子任务控制在30分钟以内。"
+            )
+            yield event.plain_result(
+                f"📋 任务拆解：{user_input}\n\n{llm_response}\n\n"
+                f"💡 如需将子任务添加到计划，请说「把以上任务添加到计划」"
+            )
+        except Exception as e:
+            logger.error(f"breakdown_task failed: {e}")
+            yield event.plain_result(f"❌ 拆解失败：{e}")
+
     @filter.llm_tool(name="list_planner_tasks")
     async def list_planner_tasks(
         self,
