@@ -1,7 +1,7 @@
 plugin_id: astrbot_plugin_planner
 name: astrbot_plugin_planner
 display_name: 计划助手
-version: 1.2.5
+version: 1.2.6
 description: 智能计划助手 - 自然语言创建任务、智能排程、定时提醒、可视化日程
 author: eternitylarva1
 repo: https://github.com/eternitylarva1/astrbot_plugin_planner/tree/main
