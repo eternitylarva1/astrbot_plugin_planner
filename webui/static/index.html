@@ -18,7 +18,7 @@
         </header>
 
         <!-- Date Tabs -->
-        <nav class="date-tabs">
+        <nav class="date-tabs" id="dateTabs">
             <button class="tab-btn active" data-date="today" onclick="switchDate('today')">今天</button>
             <button class="tab-btn" data-date="tomorrow" onclick="switchDate('tomorrow')">明天</button>
             <button class="tab-btn" data-date="week" onclick="switchDate('week')">本周</button>
@@ -61,6 +61,45 @@
                 </div>
             </div>
 
+            <!-- Breakdown View -->
+            <div class="view-panel" id="breakdownPanel">
+                <div class="breakdown-input-area">
+                    <div class="breakdown-input-wrapper">
+                        <input
+                            type="text"
+                            id="breakdownInput"
+                            placeholder="输入要拆解的任务，如：完成毕业论文"
+                            autocomplete="off"
+                        >
+                        <button class="breakdown-btn" onclick="breakdownTask()">🔍 拆解</button>
+                    </div>
+                </div>
+                
+                <div class="breakdown-result" id="breakdownResult" style="display: none;">
+                    <div class="breakdown-header">
+                        <h3 id="breakdownTitle">任务拆解</h3>
+                        <div class="breakdown-actions">
+                            <button class="action-btn" onclick="importBreakdown()">✅ 导入任务</button>
+                        </div>
+                    </div>
+                    <div class="breakdown-list" id="breakdownList"></div>
+                    <div class="breakdown-add">
+                        <button class="add-task-btn" onclick="addBreakdownTask()">➕ 添加子任务</button>
+                    </div>
+                </div>
+                
+                <div class="breakdown-empty" id="breakdownEmpty">
+                    <div class="empty-icon">📝</div>
+                    <p>任务拆解</p>
+                    <p class="empty-hint">输入要拆解的任务，自动分解成可执行的小任务</p>
+                </div>
+                
+                <div class="breakdown-loading" id="breakdownLoading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>正在拆解任务...</p>
+                </div>
+            </div>
+
             <!-- Chart View -->
             <div class="view-panel" id="chartPanel">
                 <div class="chart-tabs">
@@ -78,7 +117,7 @@
         </div>
 
         <!-- Input Area -->
-        <div class="input-area">
+        <div class="input-area" id="inputArea">
             <div class="input-wrapper">
                 <input
                     type="text"
@@ -96,6 +135,10 @@
             <button class="tab-item active" data-view="tasks" onclick="switchView('tasks')">
                 <span class="tab-icon">📋</span>
                 <span class="tab-label">任务</span>
+            </button>
+            <button class="tab-item" data-view="breakdown" onclick="switchView('breakdown')">
+                <span class="tab-icon">📝</span>
+                <span class="tab-label">拆解</span>
             </button>
             <button class="tab-item" data-view="chart" onclick="switchView('chart')">
                 <span class="tab-icon">📊</span>

@@ -90,6 +90,8 @@ class WebUIServer:
         self.app.router.add_delete("/api/tasks/{task_id}", self.handle_cancel_task)
         self.app.router.add_get("/api/chart", self.handle_chart)
         self.app.router.add_get("/api/stats", self.handle_stats)
+        self.app.router.add_post("/api/breakdown", self.handle_breakdown)
+        self.app.router.add_post("/api/breakdown/import", self.handle_breakdown_import)
 
     async def handle_index(self, request: web.Request) -> web.Response:
         """主页"""
@@ -149,14 +151,17 @@ class WebUIServer:
             # 解析任务信息
             parsed = TimeParser.parse_task_info(description)
 
-            task_name = parsed.get("task_name") or description
+            task_name = parsed.get("task_name", "").strip()
             task_time = parsed.get("datetime")
             duration = parsed.get("duration") or 60  # 默认60分钟
 
-            # 如果没有指定时间，使用今天9点
+            # 如果 task_name 为空或过短，使用原始描述
+            if not task_name or len(task_name) < 2:
+                task_name = description.strip()
+
+            # 如果没有指定时间，使用当前时间
             if not task_time:
-                from datetime import time as dt_time
-                task_time = datetime.combine(date.today(), dt_time(hour=9, minute=0))
+                task_time = datetime.now()
 
             # 创建任务
             from ..models.task import Task
@@ -279,3 +284,87 @@ class WebUIServer:
         except Exception as e:
             logger.error(f"Error getting stats: {e}")
             return web.json_response({"code": 1, "message": str(e)}, status=500)
+
+    async def handle_breakdown(self, request: web.Request) -> web.Response:
+        """拆解任务"""
+        try:
+            data = await request.json()
+            task_name = data.get("task_name", "").strip()
+            
+            if not task_name:
+                return web.json_response({"code": 1, "message": "任务名称不能为空"}, status=400)
+            
+            # 调用 LLM 进行拆解
+            prompt = self._build_breakdown_prompt(task_name)
+            
+            # 这里简化处理，直接解析返回的文本
+            # 实际应该调用 LLM，但 WebUI 服务器没有 LLM 接口
+            # 所以返回前端一个提示，让前端用聊天方式处理
+            return web.json_response({
+                "code": 0,
+                "message": "请在聊天框使用 /拆解 命令进行任务拆解",
+                "data": {
+                    "task_name": task_name,
+                    "tasks": []
+                }
+            })
+        except Exception as e:
+            logger.error(f"Error in breakdown: {e}")
+            return web.json_response({"code": 1, "message": str(e)}, status=500)
+
+    async def handle_breakdown_import(self, request: web.Request) -> web.Response:
+        """导入拆解结果到任务"""
+        try:
+            data = await request.json()
+            tasks = data.get("tasks", [])
+            
+            if not tasks:
+                return web.json_response({"code": 1, "message": "没有可导入的任务"}, status=400)
+            
+            from datetime import datetime
+            from ..models.task import Task
+            imported = []
+            
+            for t in tasks:
+                task_name = t.get("name", "").strip()
+                if not task_name:
+                    continue
+                task = Task(
+                    id=str(uuid.uuid4()),
+                    name=task_name,
+                    start_time=None,  # 让系统自动安排时间
+                    duration_minutes=t.get("duration", 30),
+                    status="pending",
+                    remind_before=10,
+                    created_at=datetime.now(),
+                    session_origin="webui",
+                )
+                await self.task_service.create_task(task)
+                imported.append(task_name)
+            
+            return web.json_response({
+                "code": 0,
+                "message": f"已导入 {len(imported)} 个任务",
+                "data": {"imported": imported}
+            })
+        except Exception as e:
+            logger.error(f"Error importing breakdown: {e}")
+            return web.json_response({"code": 1, "message": str(e)}, status=500)
+
+    def _build_breakdown_prompt(self, task_name: str) -> str:
+        """构建任务拆解的 LLM 提示"""
+        return f"""请将以下任务拆解成具体可执行的子任务：
+
+任务：{task_name}
+
+拆解要求：
+1. 每个子任务控制在 15-30 分钟内
+2. 按逻辑顺序排列
+3. 用「- 任务名 (时长)」格式
+
+输出格式：
+- 任务1 (30分钟)
+- 任务2 (20分钟)
+- 任务3 (25分钟)
+
+只需要输出任务列表，每行一个任务，格式为「- 任务名 (时长)」，不要输出其他内容。"""

@@ -1,5 +1,5 @@
 /**
- * Planner WebUI - Frontend Logic (Sliding View)
+ * Planner WebUI - Frontend Logic (Sliding View with Breakdown)
  */
 
 const API_BASE = '';
@@ -8,6 +8,7 @@ const API_BASE = '';
 let currentDate = 'today';
 let currentView = 'tasks';
 let chartLoaded = {};  // Cache loaded charts
+let breakdownTasks = [];  // Current breakdown result
 
 // DOM Elements
 const taskList = document.getElementById('taskList');
@@ -17,6 +18,9 @@ const toast = document.getElementById('toast');
 const viewContainer = document.getElementById('viewContainer');
 const chartFrame = document.getElementById('chartFrame');
 const chartLoading = document.getElementById('chartLoading');
+const dateTabs = document.getElementById('dateTabs');
+const statsBar = document.getElementById('statsBar');
+const inputArea = document.getElementById('inputArea');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,7 +54,7 @@ function switchDate(date) {
 }
 
 /**
- * Switch view between tasks and chart (sliding)
+ * Switch view between tasks/breakdown/chart (sliding)
  */
 function switchView(view) {
     currentView = view;
@@ -61,14 +65,26 @@ function switchView(view) {
         tab.classList.toggle('active', tabView === view);
     });
     
-    // Toggle sliding view
+    // Toggle sliding view - calculate offset
+    viewContainer.classList.remove('show-chart', 'show-breakdown');
+    
     if (view === 'chart') {
         viewContainer.classList.add('show-chart');
+        dateTabs.style.display = 'none';
+        statsBar.style.display = 'none';
+        inputArea.style.display = 'none';
         // Load chart if not cached
         const chartDate = document.querySelector('.chart-tab.active')?.dataset.date || 'today';
         loadChart(chartDate);
+    } else if (view === 'breakdown') {
+        viewContainer.classList.add('show-breakdown');
+        dateTabs.style.display = 'none';
+        statsBar.style.display = 'none';
+        inputArea.style.display = 'none';
     } else {
-        viewContainer.classList.remove('show-chart');
+        dateTabs.style.display = 'flex';
+        statsBar.style.display = 'flex';
+        inputArea.style.display = 'block';
     }
 }
 
@@ -131,7 +147,6 @@ function renderDayTasks(tasks) {
  * Render week tasks grouped by date
  */
 function renderWeekTasks(tasks) {
-    // Group tasks by date
     const grouped = {};
     tasks.forEach(task => {
         const date = task.date || task.start_time?.split('T')[0];
@@ -260,9 +275,7 @@ async function toggleTask(taskId) {
     const taskEl = document.querySelector(`.task-item[data-id="${taskId}"]`);
     const isCompleted = taskEl.classList.contains('completed');
     
-    if (isCompleted) {
-        return;
-    }
+    if (isCompleted) return;
     
     try {
         const response = await fetch(`${API_BASE}/api/tasks/${taskId}/complete`, {
@@ -287,9 +300,7 @@ async function toggleTask(taskId) {
  * Cancel task
  */
 async function cancelTask(taskId) {
-    if (!confirm('确定要取消这个任务吗？')) {
-        return;
-    }
+    if (!confirm('确定要取消这个任务吗？')) return;
     
     try {
         const response = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
@@ -314,16 +325,13 @@ async function cancelTask(taskId) {
  * Load chart into iframe
  */
 async function loadChart(date) {
-    // Update tab buttons
     document.querySelectorAll('.chart-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.date === date);
     });
     
-    // Show loading
     chartLoading.style.display = 'flex';
     chartFrame.style.display = 'none';
     
-    // Check cache
     const cacheKey = date;
     if (chartLoaded[cacheKey]) {
         chartFrame.srcdoc = chartLoaded[cacheKey];
@@ -337,10 +345,7 @@ async function loadChart(date) {
         const html = await response.text();
         
         if (html && html.length > 100) {
-            // Cache the HTML
             chartLoaded[cacheKey] = html;
-            
-            // Load into iframe
             chartFrame.srcdoc = html;
             chartFrame.onload = () => {
                 chartLoading.style.display = 'none';
@@ -355,7 +360,168 @@ async function loadChart(date) {
     }
 }
 
-// ============ Utility Functions ============
+// ==================== Breakdown Functions ====================
+
+/**
+ * Break down a task
+ */
+async function breakdownTask() {
+    const input = document.getElementById('breakdownInput');
+    const taskName = input.value.trim();
+    
+    if (!taskName) {
+        showToast('请输入要拆解的任务', 'error');
+        return;
+    }
+    
+    const resultDiv = document.getElementById('breakdownResult');
+    const emptyDiv = document.getElementById('breakdownEmpty');
+    const loadingDiv = document.getElementById('breakdownLoading');
+    
+    emptyDiv.style.display = 'none';
+    loadingDiv.style.display = 'flex';
+    resultDiv.style.display = 'none';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/breakdown`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ task_name: taskName }),
+        });
+        
+        const result = await response.json();
+        
+        loadingDiv.style.display = 'none';
+        
+        if (result.code === 0) {
+            // 显示手动输入界面
+            document.getElementById('breakdownTitle').textContent = `拆解：${taskName}`;
+            breakdownTasks = [];
+            renderBreakdownList();
+            resultDiv.style.display = 'block';
+        } else {
+            showToast(result.message || '拆解失败', 'error');
+            emptyDiv.style.display = 'flex';
+        }
+    } catch (error) {
+        console.error('Error in breakdown:', error);
+        loadingDiv.style.display = 'none';
+        showToast('网络错误', 'error');
+        emptyDiv.style.display = 'flex';
+    }
+}
+
+/**
+ * Render breakdown task list
+ */
+function renderBreakdownList() {
+    const listDiv = document.getElementById('breakdownList');
+    
+    if (breakdownTasks.length === 0) {
+        listDiv.innerHTML = '<div class="breakdown-empty-hint">还没有子任务，请添加或输入任务名自动拆解</div>';
+        return;
+    }
+    
+    let html = '';
+    breakdownTasks.forEach((task, index) => {
+        html += `
+            <div class="breakdown-item" data-index="${index}">
+                <div class="breakdown-item-index">${index + 1}</div>
+                <div class="breakdown-item-content">
+                    <input type="text" class="breakdown-item-name" value="${escapeHtml(task.name)}" 
+                           onchange="updateBreakdownTask(${index}, 'name', this.value)">
+                    <div class="breakdown-item-duration">
+                        <input type="number" class="breakdown-item-time" value="${task.duration}" min="5" max="240"
+                               onchange="updateBreakdownTask(${index}, 'duration', parseInt(this.value))">
+                        <span>分钟</span>
+                    </div>
+                </div>
+                <button class="breakdown-item-delete" onclick="deleteBreakdownTask(${index})">🗑️</button>
+            </div>
+        `;
+    });
+    
+    listDiv.innerHTML = html;
+}
+
+/**
+ * Update a breakdown task
+ */
+function updateBreakdownTask(index, field, value) {
+    if (field === 'name') {
+        breakdownTasks[index].name = value;
+    } else if (field === 'duration') {
+        breakdownTasks[index].duration = value;
+    }
+}
+
+/**
+ * Delete a breakdown task
+ */
+function deleteBreakdownTask(index) {
+    breakdownTasks.splice(index, 1);
+    renderBreakdownList();
+}
+
+/**
+ * Add a new breakdown task
+ */
+function addBreakdownTask() {
+    breakdownTasks.push({
+        name: '新任务',
+        duration: 30
+    });
+    renderBreakdownList();
+}
+
+/**
+ * Import breakdown tasks
+ */
+async function importBreakdown() {
+    if (breakdownTasks.length === 0) {
+        showToast('没有可导入的任务', 'error');
+        return;
+    }
+    
+    // 过滤掉空任务
+    const validTasks = breakdownTasks.filter(t => t.name && t.name.trim());
+    if (validTasks.length === 0) {
+        showToast('没有有效的任务可导入', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/breakdown/import`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ tasks: validTasks }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.code === 0) {
+            showToast(result.message || `已导入 ${validTasks.length} 个任务`, 'success');
+            // 清空拆解结果
+            breakdownTasks = [];
+            document.getElementById('breakdownInput').value = '';
+            document.getElementById('breakdownResult').style.display = 'none';
+            document.getElementById('breakdownEmpty').style.display = 'flex';
+            // 切换到任务视图
+            switchView('tasks');
+        } else {
+            showToast(result.message || '导入失败', 'error');
+        }
+    } catch (error) {
+        console.error('Error importing breakdown:', error);
+        showToast('网络错误', 'error');
+    }
+}
+
+// ==================== Utility Functions ====================
 
 function showToast(message, type = 'info') {
     toast.textContent = message;
@@ -384,32 +550,15 @@ function escapeHtml(text) {
 
 function getTaskEmoji(taskName) {
     const keywords = {
-        '开会': '💼',
-        '代码': '👨‍💻',
-        '写代码': '👨‍💻',
-        '学习': '📚',
-        '运动': '🏃',
-        '吃饭': '🍽️',
-        '睡觉': '🛌',
-        '休息': '☕',
-        '阅读': '📖',
-        '写作': '✍️',
-        '复习': '📖',
-        '考试': '📋',
-        '面试': '🎯',
-        '项目': '📁',
-        '视频': '🎬',
-        '音乐': '🎵',
-        '电影': '🎬',
-        '游戏': '🎮',
-        '购物': '🛒',
-        '旅行': '✈️',
+        '开会': '💼', '代码': '👨‍💻', '写代码': '👨‍💻', '学习': '📚',
+        '运动': '🏃', '吃饭': '🍽️', '睡觉': '🛌', '休息': '☕',
+        '阅读': '📖', '写作': '✍️', '复习': '📖', '考试': '📋',
+        '面试': '🎯', '项目': '📁', '视频': '🎬', '音乐': '🎵',
+        '电影': '🎬', '游戏': '🎮', '购物': '🛒', '旅行': '✈️',
     };
     
     for (const [key, emoji] of Object.entries(keywords)) {
-        if (taskName.includes(key)) {
-            return emoji;
-        }
+        if (taskName.includes(key)) return emoji;
     }
     return '📌';
 }
