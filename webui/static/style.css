@@ -140,31 +140,40 @@ body {
     transition: transform 0.3s ease-in-out;
     -webkit-overflow-scrolling: touch;
     background: var(--gray-100);
+    flex-shrink: 0;
 }
 
 .view-panel::-webkit-scrollbar {
     display: none;
 }
 
-/* When view is 'chart', slide to show chart panel (2nd position) */
-#viewContainer.show-chart #tasksPanel {
-    transform: translateX(-100%);
-}
+/* Sliding logic - 3 panels stacked horizontally:
+   Order: tasks (left), breakdown (middle), chart (right)
+   
+   Default (tasks visible):  tasks at 0%, breakdown at 100%, chart at 200%
+   show-breakdown: tasks at -100%, breakdown at 0%, chart at 100%
+   show-chart: tasks at -200%, breakdown at -100%, chart at 0%
+*/
 
-#viewContainer.show-chart #chartPanel {
-    transform: translateX(-100%);
-}
-
-/* When view is 'breakdown', slide to show breakdown panel (3rd position) */
+/* Breakdown view (middle panel visible) */
 #viewContainer.show-breakdown #tasksPanel {
-    transform: translateX(-200%);
+    transform: translateX(-100%);
 }
-
-#viewContainer.show-breakdown #chartPanel {
-    transform: translateX(-200%);
-}
-
 #viewContainer.show-breakdown #breakdownPanel {
+    transform: translateX(-100%);
+}
+#viewContainer.show-breakdown #chartPanel {
+    transform: translateX(-100%);
+}
+
+/* Chart view (right panel visible) */
+#viewContainer.show-chart #tasksPanel {
+    transform: translateX(-200%);
+}
+#viewContainer.show-chart #breakdownPanel {
+    transform: translateX(-200%);
+}
+#viewContainer.show-chart #chartPanel {
     transform: translateX(-200%);
 }
 
