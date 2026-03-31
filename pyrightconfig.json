@@ -1,0 +1,14 @@
+{
+  "venvPath": "C:\\Users\\gaoming\\.astrbot_launcher\\components\\python",
+  "pythonVersion": "3.12",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "pythonVersion": "3.12.0"
+    }
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "autoImportCompletions": true
+}
