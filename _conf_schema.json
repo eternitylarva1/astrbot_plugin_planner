@@ -61,19 +61,19 @@
   },
   "llm_api_base": {
     "description": "LLM API 地址（OpenAI 兼容格式）",
-    "type": "str",
+    "type": "string",
     "default": "https://open.cherryin.net/v1",
     "hint": "填写你的 LLM API 地址，如 OpenAI、Claude 或其他兼容 API"
   },
   "llm_api_key": {
     "description": "LLM API 密钥",
-    "type": "str",
+    "type": "string",
     "default": "",
     "hint": "填写你的 API 密钥"
   },
   "llm_model": {
     "description": "LLM 模型名称",
-    "type": "str",
+    "type": "string",
     "default": "minimax/minimax-m2.5-highspeed",
     "hint": "填写使用的模型"
   }
