@@ -2021,28 +2021,19 @@ class PlannerPlugin(Star):
     async def _call_llm_breakdown(self, task_name: str) -> List[Dict]:
         """通过 LLM 拆解任务（供 WebUI 调用）"""
         try:
-            prompt = self._build_breakdown_prompt(task_name)
-            
-            # 使用 provider.text_chat() 方法调用 LLM
-            provider = self.context.get_using_provider()
-            if not provider:
-                all_providers = self.context.get_all_providers()
-                if all_providers:
-                    provider = list(all_providers.values())[0]
-            
-            if not provider:
-                logger.warning("No LLM provider available")
+            # 检查是否有保存的 context
+            if not hasattr(self, '_event_context') or not self._event_context:
+                logger.warning("No event context available for LLM call")
                 return []
             
-            logger.info(f"Using provider: {type(provider)}, name: {getattr(provider, 'name', 'unknown')}")
+            prompt = self._build_breakdown_prompt(task_name)
             
-            # 调用 LLM
-            llm_resp = await provider.text_chat(
-                prompt=prompt,
-                system_prompt="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
+            # 使用与命令处理器相同的 LLM API
+            llm_response = await self._event_context.llm.generate(
+                prompt,
+                system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
             )
             
-            llm_response = llm_resp.completion_text if llm_resp else ""
             logger.info(f"LLM response: {llm_response[:200] if llm_response else 'empty'}...")
             tasks = self._parse_breakdown_result(llm_response)
             logger.info(f"LLM breakdown for '{task_name}': {len(tasks)} tasks")

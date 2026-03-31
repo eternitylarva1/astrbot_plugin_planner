@@ -12,7 +12,28 @@ from aiohttp import web
 
 from astrbot.api import logger
 
-logger = logger
+
+@web.middleware
+async def cors_middleware(request, handler):
+    """CORS 中间件 - 支持跨域请求（移动端访问）"""
+    if request.method == "OPTIONS":
+        # 处理 preflight 请求
+        return web.Response(
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                "Access-Control-Max-Age": "86400",
+            }
+        )
+    
+    response = await handler(request)
+    
+    # 添加 CORS 头到所有响应
+    if hasattr(response, "headers"):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    
+    return response
 
 
 class WebUIServer:
@@ -52,7 +73,7 @@ class WebUIServer:
             logger.warning("WebUI server already running")
             return
 
-        self.app = web.Application()
+        self.app = web.Application(middlewares=[cors_middleware])
 
         # 注册路由
         self._setup_routes()

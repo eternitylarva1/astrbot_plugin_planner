@@ -2,6 +2,13 @@
 
 本文档记录 `astrbot_plugin_planner` 的功能更新。
 
+## [1.3.5] - 2026-03-31
+
+### Fixed
+- 修复 WebUI 任务拆解功能：`_call_llm_breakdown` 现在使用正确的 `event.context.llm.generate()` API
+- 添加 CORS 中间件：修复移动端浏览器跨域访问问题
+- 移除冗余代码：删除 `logger = logger` 无用赋值
+
 ## [1.3.4] - 2026-03-31
 
 ### Fixed
