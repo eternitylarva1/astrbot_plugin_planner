@@ -2002,26 +2002,25 @@ class PlannerPlugin(Star):
     async def _call_llm_breakdown(self, task_name: str) -> List[Dict]:
         """通过 LLM 拆解任务（供 WebUI 调用）"""
         try:
-            # 使用 context.llm_generate() 方法
-            # 需要先获取 provider_id
             prompt = self._build_breakdown_prompt(task_name)
             
-            # 获取默认 provider
-            provider = self.context.get_provider_by_id("default")
+            # 使用 provider.text_chat() 方法调用 LLM
+            provider = self.context.get_using_provider()
             if not provider:
-                # 尝试获取当前使用的 provider
-                provider = self.context.get_using_provider()
+                all_providers = self.context.get_all_providers()
+                if all_providers:
+                    provider = list(all_providers.values())[0]
             
             if not provider:
                 logger.warning("No LLM provider available")
                 return []
             
-            logger.info(f"Using provider: {type(provider)}")
+            logger.info(f"Using provider: {type(provider)}, name: {getattr(provider, 'name', 'unknown')}")
             
             # 调用 LLM
-            llm_resp = await self.context.llm_generate(
-                chat_provider_id="default",
+            llm_resp = await provider.text_chat(
                 prompt=prompt,
+                system_prompt="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
             )
             
             llm_response = llm_resp.completion_text if llm_resp else ""
