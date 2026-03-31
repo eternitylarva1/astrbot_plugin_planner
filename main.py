@@ -2021,15 +2021,17 @@ class PlannerPlugin(Star):
     async def _call_llm_breakdown(self, task_name: str) -> List[Dict]:
         """通过 LLM 拆解任务（供 WebUI 调用）"""
         try:
-            # 检查是否有保存的 context
-            if not hasattr(self, '_event_context') or not self._event_context:
-                logger.warning("No event context available for LLM call")
+            # 优先使用事件 context（包含 session 信息），否则使用插件 context
+            ctx = self._event_context if self._event_context else self._context
+            
+            if not ctx or not hasattr(ctx, 'llm'):
+                logger.warning(f"No context or llm available. _event_context={self._event_context}, _context={self._context}")
                 return []
             
             prompt = self._build_breakdown_prompt(task_name)
             
             # 使用与命令处理器相同的 LLM API
-            llm_response = await self._event_context.llm.generate(
+            llm_response = await ctx.llm.generate(
                 prompt,
                 system="你是一个任务拆解专家。将大任务拆解成具体可执行的子任务，每个15-30分钟。只输出Markdown列表格式。"
             )

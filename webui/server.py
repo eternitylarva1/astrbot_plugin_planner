@@ -358,18 +358,24 @@ class WebUIServer:
             if not tasks:
                 return web.json_response({"code": 1, "message": "没有可导入的任务"}, status=400)
             
-            from datetime import datetime
+            from datetime import datetime, timedelta
             from ..models.task import Task
             imported = []
             
-            for t in tasks:
+            # 计算默认开始时间：今天下午 6 点
+            today = date.today()
+            default_start = datetime.combine(today, datetime.min.time()) + timedelta(hours=18)
+            
+            for i, t in enumerate(tasks):
                 task_name = t.get("name", "").strip()
                 if not task_name:
                     continue
+                # 每个任务间隔 30 分钟
+                task_start = default_start + timedelta(minutes=i * 30)
                 task = Task(
                     id=str(uuid.uuid4()),
                     name=task_name,
-                    start_time=None,  # 让系统自动安排时间
+                    start_time=task_start,
                     duration_minutes=t.get("duration", 30),
                     status="pending",
                     remind_before=10,
