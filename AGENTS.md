@@ -280,6 +280,7 @@ astrbot_plugin_planner/
 │   ├── task_service.py      # Task CRUD
 │   ├── reminder_service.py  # APScheduler reminders
 │   ├── learning_service.py  # Habit learning
+│   ├── llm_service.py      # Independent LLM service (task breakdown)
 │   └── astrbot_scheduler_adapter.py
 ├── handlers/                # (reserved)
 ├── webui/                   # WebUI server
@@ -288,7 +289,8 @@ astrbot_plugin_planner/
 │   ├── test_planner_fixes.py
 │   └── test_remind_default_sync.py
 └── scripts/
-    └── render_preview.py    # HTML preview generation
+    ├── render_preview.py    # HTML preview generation
+    └── send_msg.py          # NapCat message sending script
 ```
 
 ## Key Constraints
@@ -308,9 +310,63 @@ Config keys in `_conf_schema.json`:
 - `habit_planning_enabled`: Enable habit learning (default: true)
 - `habit_weight`: 0-1, higher = more habit-based (default: 0.7)
 
+### LLM Configuration (Independent from AstrBot)
+The WebUI can use its own LLM configuration for task breakdown:
+- `llm_api_base`: LLM API base URL (e.g., `https://api.openai.com/v1`)
+- `llm_api_key`: API key for the LLM service
+- `llm_model`: Model name (e.g., `gpt-4o-mini`)
+
+### LLM Service (`services/llm_service.py`)
+Independent LLM service that doesn't rely on AstrBot:
+- Uses OpenAI-compatible API format
+- Direct HTTP calls via aiohttp
+- Configurable via `_conf_schema.json`
+
 ## Version Updates
 When making changes:
 1. Update `metadata.yaml` version
 2. Update `CHANGELOG.md`
 3. Run tests before commit
 4. Push immediately (don't batch commits)
+
+## User Notification (NapCat)
+
+When the AI agent needs user to perform manual actions (e.g., restart plugin, enable feature, confirm operation), use the NapCat script to send notification.
+
+### NapCat Configuration
+- **Script**: `scripts/send_msg.py`
+- **HTTP API URL**: `http://127.0.0.1:3000`
+- **Target QQ**: `2674610176`
+
+### Usage
+```bash
+# Check connection
+python scripts/send_msg.py --check
+
+# Send private message
+python scripts/send_msg.py <QQ号> <消息>
+python scripts/send_msg.py 2674610176 你好
+```
+
+### When to Notify User
+Notify user via NapCat when:
+- Plugin code has been updated and needs manual reload via AstrBot admin panel
+- NapCat/AstrBot configuration changes require restart
+- Testing completed and results need to be reported
+- Critical errors cannot be auto-resolved and need manual intervention
+
+### Notification Template
+```
+[计划助手通知]
+{简短描述问题/操作}
+{需要的操作}
+{完成后请告知}
+```
+
+Example:
+```
+[计划助手通知]
+WebUI 拆解功能已修复，需要重新加载插件。
+请在 AstrBot 管理面板中找到"计划助手"，点击"更多" -> "重载插件"。
+完成后请告知。
+```

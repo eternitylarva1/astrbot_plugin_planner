@@ -12,28 +12,7 @@ from aiohttp import web
 
 from astrbot.api import logger
 
-
-@web.middleware
-async def cors_middleware(request, handler):
-    """CORS 中间件 - 支持跨域请求（移动端访问）"""
-    if request.method == "OPTIONS":
-        # 处理 preflight 请求
-        return web.Response(
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-                "Access-Control-Max-Age": "86400",
-            }
-        )
-    
-    response = await handler(request)
-    
-    # 添加 CORS 头到所有响应
-    if hasattr(response, "headers"):
-        response.headers["Access-Control-Allow-Origin"] = "*"
-    
-    return response
+logger = logger
 
 
 class WebUIServer:
@@ -73,7 +52,7 @@ class WebUIServer:
             logger.warning("WebUI server already running")
             return
 
-        self.app = web.Application(middlewares=[cors_middleware])
+        self.app = web.Application()
 
         # 注册路由
         self._setup_routes()
@@ -358,24 +337,18 @@ class WebUIServer:
             if not tasks:
                 return web.json_response({"code": 1, "message": "没有可导入的任务"}, status=400)
             
-            from datetime import datetime, timedelta
+            from datetime import datetime
             from ..models.task import Task
             imported = []
             
-            # 计算默认开始时间：今天下午 6 点
-            today = date.today()
-            default_start = datetime.combine(today, datetime.min.time()) + timedelta(hours=18)
-            
-            for i, t in enumerate(tasks):
+            for t in tasks:
                 task_name = t.get("name", "").strip()
                 if not task_name:
                     continue
-                # 每个任务间隔 30 分钟
-                task_start = default_start + timedelta(minutes=i * 30)
                 task = Task(
                     id=str(uuid.uuid4()),
                     name=task_name,
-                    start_time=task_start,
+                    start_time=None,  # 让系统自动安排时间
                     duration_minutes=t.get("duration", 30),
                     status="pending",
                     remind_before=10,
