@@ -7,7 +7,7 @@ import asyncio
 import re
 import time
 from datetime import datetime, timedelta, date, time as dt_time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, AsyncGenerator
 import uuid
 
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
@@ -302,7 +302,7 @@ class PlannerPlugin(Star):
         self,
         event: AstrMessageEvent,
         task_name: str,
-        task_time: datetime,
+        task_time: Optional[datetime],
         duration: int,
         repeat: Optional[str] = None,
         interactive: bool = True,
@@ -314,6 +314,24 @@ class PlannerPlugin(Star):
         - ok=False: 已检测到冲突，message 为给用户的提示文案
         """
         await self._ensure_runtime_initialized()
+        
+        # 如果 task_time 为 None，跳过冲突检测（自动安排时间）
+        if task_time is None:
+            task = Task(
+                id=str(uuid.uuid4()),
+                name=task_name,
+                start_time=None,
+                duration_minutes=duration,
+                status="pending",
+                remind_before=await self.learning_service.get_remind_preference(
+                    task_name, fallback_minutes=self._default_remind_before
+                ),
+                repeat=repeat,
+                created_at=datetime.now(),
+                session_origin=event.unified_msg_origin,
+            )
+            return {"ok": True, "task": task}
+        
         conflicts = await self.task_service.check_conflict(task_time, duration)
         if not conflicts:
             task = Task(
@@ -337,8 +355,9 @@ class PlannerPlugin(Star):
         conflict_lines = []
         for c in conflicts[:3]:
             if c.start_time:
+                end_time = c.get_end_time()
                 conflict_lines.append(
-                    f"• {c.name}（{c.start_time.strftime('%H:%M')}-{c.get_end_time().strftime('%H:%M')}）"
+                    f"• {c.name}（{c.start_time.strftime('%H:%M')}-{end_time.strftime('%H:%M') if end_time else '?'}）"
                 )
 
         message = f"⚠️ 该时间段存在冲突：{task_time.strftime('%Y-%m-%d %H:%M')}\n"
@@ -635,7 +654,7 @@ class PlannerPlugin(Star):
 
     async def _render_schedule_by_text(
         self, query_text: str, event: AstrMessageEvent
-    ) -> MessageEventResult:
+    ) -> AsyncGenerator[MessageEventResult, None]:
         """根据查询文本渲染可视化日程图。"""
         user_input = (query_text or "").lower()
         chart_style = "timeline"
@@ -2733,7 +2752,7 @@ class PlannerPlugin(Star):
             yield event.plain_result(
                 f"✅ 任务已创建\n━━━━━━━━━━━━━━━\n"
                 f"📌 {task.name}\n"
-                f"⏰ {task.start_time.strftime('%Y-%m-%d %H:%M')}\n"
+                f"⏰ {task.start_time.strftime('%Y-%m-%d %H:%M') if task.start_time else '待定'}\n"
                 f"⏱️ {TimeParser.format_duration(task.duration_minutes)}\n"
                 f"\n💡 {task.remind_before}分钟后提醒你"
             )
