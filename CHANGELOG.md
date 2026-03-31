@@ -2,6 +2,12 @@
 
 本文档记录 `astrbot_plugin_planner` 的功能更新。
 
+## [1.3.6] - 2026-03-31
+
+### Fixed
+- 修复 WebUI 拆解任务不走 LLM：`_call_llm_breakdown` 现在优先使用 `_event_context`，否则使用 `_context`
+- 修复导入任务不显示：导入任务现在设置默认开始时间(今天18:00)，解决 `start_time=None` 导致任务不显示的问题
+
 ## [1.3.5] - 2026-03-31
 
 ### Fixed
