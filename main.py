@@ -560,6 +560,229 @@ class PlannerPlugin(Star):
 
         yield event.plain_result("\n".join(lines))
 
+    @filter.llm_tool(name="planner_create")
+    async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
+        """创建日程
+
+        当用户想创建日程时使用，如"帮我安排明天开会"、"创建日程"。
+
+        Args:
+            description(str): 自然语言日程描述，如"明天下午3点开会2小时"
+        """
+        if not description or not description.strip():
+            return "请提供日程描述，如：明天下午3点开会"
+        result = await self.api.llm_create(description)
+        if not result:
+            return "❌ 创建失败，请稍后重试"
+        events = result if isinstance(result, list) else [result]
+        lines = [f"✅ 已创建 {len(events)} 个日程"]
+        for e in events:
+            start = e.get("start_time", "待定")
+            if start and isinstance(start, str):
+                try:
+                    dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                    start = dt.strftime("%m-%d %H:%M")
+                except:
+                    pass
+            lines.append(f"• {e.get('title', '未知')} [{start}]")
+        return "\n".join(lines)
+
+    @filter.llm_tool(name="planner_query")
+    async def planner_query(
+        self,
+        event: AstrMessageEvent,
+        type: str,
+        date_filter: Optional[str] = None,
+        horizon: Optional[str] = None,
+    ) -> str:
+        """查看日程/待办/统计/目标
+
+        Args:
+            type(str): 查询类型 - todos/stats/events/goals
+            date_filter(str): 日期过滤，如 today/week/month（用于 todos/stats/events）
+            horizon(str): 规划范围，如 short/semester/long（用于 goals）
+        """
+        if type == "todos":
+            events = await self.api.get_events("month")
+            if events is None:
+                return "❌ 获取失败，请检查后端服务"
+            pending = [e for e in events if e.get("status") != "done"]
+            if not pending:
+                return "📋 没有待办"
+            lines = [f"📋 待办列表（共 {len(pending)} 项）"]
+            for i, e in enumerate(pending[:20], 1):
+                start = e.get("start_time", "")
+                if start:
+                    try:
+                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start_str = dt.strftime("%m-%d %H:%M")
+                    except:
+                        start_str = str(start)[:16]
+                else:
+                    start_str = "待定"
+                lines.append(f"{i}. {e.get('title', '未知')} [{start_str}]")
+            return "\n".join(lines)
+
+        elif type == "stats":
+            filter_str = date_filter or "today"
+            stats = await self.api.get_stats(filter_str)
+            if not stats:
+                return "❌ 获取统计失败"
+            total = stats.get("total", 0)
+            completed = stats.get("completed", 0)
+            rate = stats.get("completion_rate", 0)
+            return f"📊 {filter_str} 统计\n总日程：{total}\n已完成：{completed}\n完成率：{rate}%"
+
+        elif type == "events":
+            filter_str = date_filter or "today"
+            events = await self.api.get_events(filter_str)
+            if events is None:
+                return "❌ 获取日程失败"
+            if not events:
+                return f"📋 {filter_str} 暂无日程"
+            lines = [f"📅 日程列表（{filter_str}）"]
+            for e in events:
+                start = e.get("start_time", "")
+                if start:
+                    try:
+                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start_str = dt.strftime("%m-%d %H:%M")
+                    except:
+                        start_str = str(start)[:16]
+                else:
+                    start_str = "待定"
+                status = "✓" if e.get("status") == "done" else "○"
+                lines.append(f"{status} {e.get('title', '未知')} [{start_str}]")
+            return "\n".join(lines)
+
+        elif type == "goals":
+            horizon_str = horizon or "short"
+            goals = await self.api.get_goals(horizon_str)
+            if goals is None:
+                return "❌ 获取目标失败"
+            if not goals:
+                return f"📋 暂无 {horizon_str} 目标"
+            lines = [f"🎯 目标列表（{horizon_str}）"]
+            for g in goals[:10]:
+                status = "✓" if g.get("status") == "done" else "○"
+                lines.append(f"{status} {g.get('title', '未知')}")
+            return "\n".join(lines)
+
+        else:
+            return f"❌ 不支持的查询类型：{type}，可选：todos/stats/events/goals"
+
+    @filter.llm_tool(name="planner_manage")
+    async def planner_manage(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+        event_id: Optional[int] = None,
+        keyword: Optional[str] = None,
+    ) -> str:
+        """完成或取消日程
+
+        Args:
+            action(str): 操作类型 - complete/cancel
+            event_id(int): 日程 ID（可选）
+            keyword(str): 日程名称关键字（用于模糊匹配）
+        """
+        if action not in ("complete", "cancel"):
+            return "❌ action 必须为 complete 或 cancel"
+
+        events = await self.api.get_events("today")
+        if not events:
+            return "📋 今天没有日程"
+
+        target_id = event_id
+        if not target_id and keyword:
+            matched = [e for e in events if keyword in e.get("title", "")]
+            if not matched:
+                return f"❌ 没有找到包含「{keyword}」的日程"
+            target_id = matched[0].get("id")
+
+        if not target_id:
+            return "❌ 请提供 event_id 或 keyword"
+
+        if action == "complete":
+            result = await self.api.complete_event(target_id)
+            if result:
+                return f"✅ 已完成：{result.get('title', '')}"
+            return "❌ 操作失败"
+
+        else:
+            if await self.api.delete_event(target_id):
+                return "❌ 已取消"
+            return "❌ 操作失败"
+
+    @filter.llm_tool(name="planner_ai_plan")
+    async def planner_ai_plan(
+        self,
+        event: AstrMessageEvent,
+        intention: str,
+        horizon: str = "short",
+    ) -> str:
+        """AI 模糊目标规划
+
+        当用户说"帮我安排一下"、"规划一下"等模糊意图时使用。
+
+        Args:
+            intention(str): 用户目标描述，如"这周把作品集和算法复习安排一下"
+            horizon(str): 规划范围 - short/semester/long
+        """
+        if not intention or not intention.strip():
+            return "请提供目标描述，如：帮我安排这周的学习计划"
+        result = await self.api.llm_breakdown(intention, horizon)
+        if not result:
+            return "❌ AI 处理失败，请稍后重试"
+        subtasks = result.get("subtasks", [])
+        if not subtasks:
+            return f"💬 {result.get('message', '无法生成规划')}"
+        lines = ["🤖 AI 规划建议", "━━━━━━━━━━━━━━━"]
+        for i, st in enumerate(subtasks[:10], 1):
+            title = st.get("title", "未知")
+            date_str = st.get("date", "")
+            time_str = st.get("start_time", "")
+            duration = st.get("duration_minutes", 30)
+            lines.append(f"{i}. {title}")
+            if date_str or time_str:
+                lines.append(f"   {date_str} {time_str} ({duration}分钟)")
+        return "\n".join(lines)
+
+    @filter.llm_tool(name="planner_breakdown")
+    async def planner_breakdown(
+        self,
+        event: AstrMessageEvent,
+        task_name: str,
+        horizon: str = "short",
+    ) -> str:
+        """任务拆解
+
+        将大任务拆解为可执行的小任务。
+
+        Args:
+            task_name(str): 要拆解的任务名称
+            horizon(str): 规划范围 - short/semester/long
+        """
+        if not task_name or not task_name.strip():
+            return "请提供要拆解的任务名称"
+        result = await self.api.llm_breakdown(task_name.strip(), horizon)
+        if not result:
+            return "❌ 拆解失败，请稍后重试"
+        subtasks = result.get("subtasks", [])
+        if not subtasks:
+            return f"💬 {result.get('message', '无法拆解')}"
+        lines = [f"📋 任务拆解：{task_name}", "", "序号 | 任务 | 时长"]
+        lines.append("-" * 40)
+        total = 0
+        for i, st in enumerate(subtasks[:10], 1):
+            title = st.get("title", "未知")
+            duration = st.get("duration_minutes", 30)
+            total += duration
+            lines.append(f"{i} | {title} | {duration}分钟")
+        lines.append("-" * 40)
+        lines.append(f"共 {len(subtasks)} 项，约 {total} 分钟")
+        return "\n".join(lines)
+
     async def terminate(self):
         """插件卸载时关闭浏览器"""
         if self._browser_context:
