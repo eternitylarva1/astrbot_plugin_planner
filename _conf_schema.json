@@ -1,80 +1,20 @@
 {
-  "timeout_seconds": {
-    "description": "创建任务时，等待用户回复的超时时间（秒）",
-    "type": "int",
-    "default": 120,
-    "hint": "超过此时间未回复将自动取消任务创建。推荐 60-600 秒（1-10分钟）"
+  "schedule_api_base": {
+    "description": "Schedule App 后端 API 地址",
+    "type": "string",
+    "default": "http://localhost:8080",
+    "hint": "填写 Schedule App 后端服务的地址，如 http://localhost:8080"
   },
-  "remind_before": {
-    "description": "任务开始前多少分钟提醒",
-    "type": "int",
-    "default": 10,
-    "hint": "任务临近时提前提醒的分钟数"
+  "frontend_url": {
+    "description": "Schedule App 前端地址（用于截图）",
+    "type": "string",
+    "default": "http://localhost:8080",
+    "hint": "填写前端服务地址，截图功能会加载此页面"
   },
-  "auto_plan_on_missing_time": {
-    "description": "LLM工具在缺少具体时间时是否自动规划并给出可执行时间",
+  "enable_screenshot": {
+    "description": "是否启用截图功能",
     "type": "bool",
     "default": true,
-    "hint": "开启后，像“今天帮我安排一个小时做视频”这类输入会自动生成时间建议而不是只让用户补充"
-  },
-  "avoid_past_time": {
-    "description": "AI规划时自动避免过去时间",
-    "type": "bool",
-    "default": true,
-    "hint": "开启后，若建议时间早于当前时间，会自动顺延到未来可执行时段"
-  },
-  "ai_default_duration_minutes": {
-    "description": "AI规划默认任务时长（分钟）",
-    "type": "int",
-    "default": 45,
-    "hint": "当没有学习数据且用户未指定时长时使用"
-  },
-  "habit_planning_enabled": {
-    "description": "是否启用习惯驱动规划",
-    "type": "bool",
-    "default": true,
-    "hint": "关闭后，自动规划将减少对历史习惯的依赖，改用更中性的建议"
-  },
-  "habit_weight": {
-    "description": "习惯权重（0~1）",
-    "type": "float",
-    "default": 0.7,
-    "hint": "值越高越依赖已学习偏好；值越低越偏向通用默认策略"
-  },
-  "suggestion_count": {
-    "description": "AI默认建议数量",
-    "type": "int",
-    "default": 3,
-    "hint": "自动规划默认建议任务数上限（1-10）"
-  },
-  "max_daily_minutes": {
-    "description": "每日最大规划时长（分钟）",
-    "type": "int",
-    "default": 360,
-    "hint": "同一天自动规划任务总时长超过该值时会顺延到后续日期"
-  },
-  "learning_confidence_threshold": {
-    "description": "学习置信阈值（0~1）",
-    "type": "float",
-    "default": 0.35,
-    "hint": "学习置信度低于阈值时，系统会减少习惯干预"
-  },
-  "llm_api_base": {
-    "description": "LLM API 地址（OpenAI 兼容格式）",
-    "type": "string",
-    "default": "https://open.cherryin.net/v1",
-    "hint": "填写你的 LLM API 地址，如 OpenAI、Claude 或其他兼容 API"
-  },
-  "llm_api_key": {
-    "description": "LLM API 密钥",
-    "type": "string",
-    "default": "",
-    "hint": "填写你的 API 密钥"
-  },
-  "llm_model": {
-    "description": "LLM 模型名称",
-    "type": "string",
-    "default": "minimax/minimax-m2.5-highspeed",
-    "hint": "填写使用的模型"
+    "hint": "关闭后可减少资源消耗"
   }
 }
