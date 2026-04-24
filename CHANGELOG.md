@@ -2,6 +2,23 @@
 
 本文档记录 `astrbot_plugin_planner` 的功能更新。
 
+## [2.0.0] - 2026-04-25
+
+### Refactor
+- 重构为基于 Schedule App 后端 API 的架构
+- 新增 `services/api_client.py` 作为 API 客户端
+- 简化 `main.py`，指令对接到后端 API
+
+### Removed
+- 删除所有内置服务（learning, reminder, storage, task, llm, scheduler）
+- 删除内置 WebUI 和 handlers 模块
+- 删除 time_parser 和 visualizer 工具
+- 移除所有 LLM Tool（改用后端 API）
+
+### Changed
+- 配置简化为 3 项：`schedule_api_base`, `frontend_url`, `enable_screenshot`
+- 版本升至 2.0.0
+
 ## [1.3.6] - 2026-03-31
 
 ### Fixed
