@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Dict, Any
 
+from playwright.async_api import async_playwright
+
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import AstrBotConfig
@@ -62,26 +64,44 @@ class PlannerPlugin(Star):
         self.api = get_api_client()
 
         self._frontend_url = config.get("frontend_url", "http://localhost:8080")
+        self._screenshot_enabled = config.get("enable_screenshot", True)
+        self._browser_context = None
 
         logger.info(f"计划助手插件已加载，API: {api_base}")
 
+    async def _get_browser_context(self):
+        """获取或创建 Playwright browser context"""
+        if self._browser_context is None:
+            pw = await async_playwright().start()
+            self._browser_context = await pw.chromium.launch(headless=True)
+        return self._browser_context
+
     async def _render_schedule_screenshot(self, view: str = "day") -> Optional[str]:
-        """渲染日程截图。
+        """使用 Playwright 渲染日程截图。
         
         Args:
             view: day|week|month
         
         Returns:
-            图片 URL
+            图片 URL 或 None
         """
+        if not self._screenshot_enabled:
+            return None
+
         url = f"{self._frontend_url}?view={view}"
         try:
-            image_url = await self.html_render(
-                f"<iframe src='{url}' width='100%' height='100%'/>",
-                {},
-                options={"viewport": {"width": 390, "height": 844}}
-            )
-            return image_url
+            browser = await self._get_browser_context()
+            page = await browser.new_page(viewport={"width": 390, "height": 844})
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.wait_for_timeout(1000)
+
+            screenshot_bytes = await page.screenshot(full_page=False)
+            await page.close()
+
+            from io import BytesIO
+            import base64
+            img_base64 = base64.b64encode(screenshot_bytes).decode()
+            return f"base64://{img_base64}"
         except Exception as e:
             logger.error(f"Screenshot failed: {e}")
             return None
@@ -530,5 +550,8 @@ class PlannerPlugin(Star):
         yield event.plain_result("\n".join(lines))
 
     async def terminate(self):
-        """插件卸载时调用"""
+        """插件卸载时关闭浏览器"""
+        if self._browser_context:
+            await self._browser_context.close()
+            self._browser_context = None
         logger.info("计划助手插件已卸载")
