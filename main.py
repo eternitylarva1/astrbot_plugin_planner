@@ -88,12 +88,23 @@ class PlannerPlugin(Star):
         if not self._screenshot_enabled:
             return None
 
-        url = f"{self._frontend_url}?view={view}"
+        url = f"{self._frontend_url}"
         try:
             browser = await self._get_browser_context()
             page = await browser.new_page(viewport={"width": 390, "height": 844})
             await page.goto(url, wait_until="networkidle", timeout=30000)
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(500)
+
+            if view != "day":
+                await page.evaluate(f"""
+                    if (window.ScheduleAppCore && window.ScheduleAppCore.state) {{
+                        window.ScheduleAppCore.state.currentView = '{view}';
+                    }}
+                    if (window.switchView) {{
+                        window.switchView('{view}');
+                    }}
+                """)
+                await page.wait_for_timeout(1500)
 
             screenshot_bytes = await page.screenshot(full_page=False)
             await page.close()
