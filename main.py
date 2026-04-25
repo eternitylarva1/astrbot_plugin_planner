@@ -197,24 +197,32 @@ class PlannerPlugin(Star):
 
         yield event.plain_result("🔄 正在创建日程...")
 
-        result = await self.api.llm_create(user_input)
-        if not result:
-            yield event.plain_result("❌ 创建失败，请稍后重试或检查后端服务")
-            return
+        logger.info(f"create_schedule 调用，user_input={user_input}")
 
-        events = result if isinstance(result, list) else [result]
-        lines = [f"✅ 已创建 {len(events)} 个日程"]
-        for e in events:
-            start = e.get("start_time", "待定")
-            if start and isinstance(start, str):
-                try:
-                    dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                    start = dt.strftime("%m-%d %H:%M")
-                except:
-                    pass
-            lines.append(f"• {e.get('title', '未知')} [{start}]")
+        try:
+            result = await self.api.llm_create(user_input)
+            logger.info(f"llm_create 返回: {result}")
 
-        yield event.plain_result("\n".join(lines))
+            if not result:
+                yield event.plain_result("❌ 创建失败，请稍后重试或检查后端服务")
+                return
+
+            events = result if isinstance(result, list) else [result]
+            lines = [f"✅ 已创建 {len(events)} 个日程"]
+            for e in events:
+                start = e.get("start_time", "待定")
+                if start and isinstance(start, str):
+                    try:
+                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start = dt.strftime("%m-%d %H:%M")
+                    except:
+                        pass
+                lines.append(f"• {e.get('title', '未知')} [{start}]")
+
+            yield event.plain_result("\n".join(lines))
+        except Exception as e:
+            logger.error(f"create_schedule 异常: {e}")
+            yield event.plain_result(f"❌ 创建失败: {e}")
 
     @filter.command("日程", alias={"查看日程", "任务", "日", "周程"})
     async def view_schedule(self, event: AstrMessageEvent) -> MessageEventResult:
@@ -631,21 +639,31 @@ class PlannerPlugin(Star):
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
-        result = await self.api.llm_create(description)
-        if not result:
-            return "❌ 创建失败，请稍后重试"
-        events = result if isinstance(result, list) else [result]
-        lines = [f"✅ 已创建 {len(events)} 个日程"]
-        for e in events:
-            start = e.get("start_time", "待定")
-            if start and isinstance(start, str):
-                try:
-                    dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                    start = dt.strftime("%m-%d %H:%M")
-                except:
-                    pass
-            lines.append(f"• {e.get('title', '未知')} [{start}]")
-        return "\n".join(lines)
+
+        logger.info(f"planner_create 调用，description={description}")
+
+        try:
+            result = await self.api.llm_create(description)
+            logger.info(f"llm_create 返回: {result}")
+
+            if not result:
+                return "❌ 创建失败，请稍后重试或检查后端服务"
+
+            events = result if isinstance(result, list) else [result]
+            lines = [f"✅ 已创建 {len(events)} 个日程"]
+            for e in events:
+                start = e.get("start_time", "待定")
+                if start and isinstance(start, str):
+                    try:
+                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start = dt.strftime("%m-%d %H:%M")
+                    except:
+                        pass
+                lines.append(f"• {e.get('title', '未知')} [{start}]")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"planner_create 异常: {e}")
+            return f"❌ 创建失败: {e}"
 
     @filter.llm_tool(name="planner_query")
     async def planner_query(
