@@ -78,10 +78,10 @@ class PlannerPlugin(Star):
 
     async def _render_schedule_screenshot(self, view: str = "day") -> Optional[str]:
         """使用 Playwright 渲染日程截图。
-        
+
         Args:
             view: day|week|month
-        
+
         Returns:
             图片 URL 或 None
         """
@@ -111,6 +111,7 @@ class PlannerPlugin(Star):
 
             from io import BytesIO
             import base64
+
             img_base64 = base64.b64encode(screenshot_bytes).decode()
             return f"base64://{img_base64}"
         except Exception as e:
@@ -131,7 +132,9 @@ class PlannerPlugin(Star):
             return "today"
         elif "本月" in text:
             return "month"
-        elif any(w in text for w in ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]):
+        elif any(
+            w in text for w in ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        ):
             return "week"
         else:
             return "today"
@@ -190,7 +193,9 @@ class PlannerPlugin(Star):
         /日程 明天
         /日程 本周
         """
-        user_input = _strip_cmd(event.message_str, "日程", "查看日程", "任务", "日", "周程")
+        user_input = _strip_cmd(
+            event.message_str, "日程", "查看日程", "任务", "日", "周程"
+        )
         date_filter = self._parse_date_filter(user_input) if user_input else "today"
 
         yield event.plain_result("🔄 加载中...")
@@ -215,7 +220,7 @@ class PlannerPlugin(Star):
                     start_str = str(start)[:16]
             else:
                 start_str = "待定"
-            
+
             status = "✓" if e.get("status") == "done" else "○"
             title = e.get("title", "未知")
             lines.append(f"{status} {title} [{start_str}]")
@@ -265,7 +270,7 @@ class PlannerPlugin(Star):
             return
 
         pending = [e for e in events if e.get("status") != "done"]
-        
+
         event_id = None
         try:
             idx = int(user_input) - 1
@@ -284,7 +289,7 @@ class PlannerPlugin(Star):
         if not event_id:
             yield event.plain_result("❌ 任务ID无效")
             return
-            
+
         result = await self.api.complete_event(event_id)
         if result:
             yield event.plain_result(f"✅ 已完成：{result.get('title', '')}")
@@ -300,7 +305,9 @@ class PlannerPlugin(Star):
         /取消 开会
         /取消 -1（删除今天全部）
         """
-        user_input = _strip_cmd(event.message_str, "取消", "删除日程", "删除任务", "remove")
+        user_input = _strip_cmd(
+            event.message_str, "取消", "删除日程", "删除任务", "remove"
+        )
 
         if not user_input:
             yield event.plain_result(
@@ -349,7 +356,7 @@ class PlannerPlugin(Star):
         if not event_id:
             yield event.plain_result("❌ 日程ID无效")
             return
-            
+
         if await self.api.delete_event(event_id):
             yield event.plain_result("❌ 已取消")
         else:
@@ -390,7 +397,9 @@ class PlannerPlugin(Star):
         用法：
         /ai规划 这周把作品集和算法复习安排一下
         """
-        user_input = _strip_cmd(event.message_str, "ai规划", "智能规划", "规划一下", "auto_plan")
+        user_input = _strip_cmd(
+            event.message_str, "ai规划", "智能规划", "规划一下", "auto_plan"
+        )
 
         if not user_input:
             yield event.plain_result(
@@ -505,7 +514,7 @@ class PlannerPlugin(Star):
             f"待完成：{pending}",
             f"完成率：{rate}%",
         ]
-        
+
         if by_cat:
             lines.append("")
             lines.append("按分类：")
@@ -546,7 +555,7 @@ class PlannerPlugin(Star):
     async def show_settings(self, event: AstrMessageEvent) -> MessageEventResult:
         """查看/修改设置"""
         user_input = _strip_cmd(event.message_str, "设置", "config")
-        
+
         settings = await self.api.get_settings()
         if not settings:
             yield event.plain_result("❌ 获取设置失败")
