@@ -746,7 +746,10 @@ class PlannerPlugin(Star):
             action(str): 操作类型 - complete/cancel
             event_id(int): 日程 ID（可选）
             keyword(str): 日程名称关键字（用于模糊匹配）
-            date_filter(str): 查询日期范围，如 today/tomorrow/week/all（可选）
+            date_filter(str): 查询日期，支持：
+                - today/tomorrow/week/month/all
+                - 特定日期如 2026-04-26
+                - 自然语言如 明天/下周/本周
         """
         if action not in ("complete", "cancel"):
             return "❌ action 必须为 complete 或 cancel"
