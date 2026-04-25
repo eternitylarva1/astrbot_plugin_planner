@@ -136,9 +136,9 @@ class PlannerPlugin(Star):
 
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
                 f.write(screenshot_bytes)
-                temp_path = f.name
+                temp_path = os.path.abspath(f.name)
 
-            return f"file://{temp_path}"
+            return temp_path
         except Exception as e:
             logger.error(f"Screenshot failed: {e}")
             return None
