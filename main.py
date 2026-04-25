@@ -68,6 +68,8 @@ class PlannerPlugin(Star):
         self._frontend_url = config.get("frontend_url", "http://localhost:8080")
         self._screenshot_enabled = config.get("enable_screenshot", True)
         self._browser_context = None
+        self._screenshot_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
+        os.makedirs(self._screenshot_dir, exist_ok=True)
 
         logger.info(f"计划助手插件已加载，API: {api_base}")
 
@@ -134,11 +136,13 @@ class PlannerPlugin(Star):
             screenshot_bytes = await page.screenshot(full_page=False)
             await page.close()
 
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            import uuid
+            filename = f"screenshot_{uuid.uuid4().hex[:8]}.png"
+            filepath = os.path.join(self._screenshot_dir, filename)
+            with open(filepath, "wb") as f:
                 f.write(screenshot_bytes)
-                temp_path = os.path.abspath(f.name)
 
-            return temp_path
+            return filepath
         except Exception as e:
             logger.error(f"Screenshot failed: {e}")
             return None
