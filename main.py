@@ -68,7 +68,9 @@ class PlannerPlugin(Star):
         self._frontend_url = config.get("frontend_url", "http://localhost:8080")
         self._screenshot_enabled = config.get("enable_screenshot", True)
         self._browser_context = None
-        self._screenshot_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "screenshots")
+        self._screenshot_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "screenshots"
+        )
         os.makedirs(self._screenshot_dir, exist_ok=True)
 
         logger.info(f"计划助手插件已加载，API: {api_base}")
@@ -137,6 +139,7 @@ class PlannerPlugin(Star):
             await page.close()
 
             import uuid
+
             filename = f"screenshot_{uuid.uuid4().hex[:8]}.png"
             filepath = os.path.join(self._screenshot_dir, filename)
             with open(filepath, "wb") as f:
@@ -735,6 +738,7 @@ class PlannerPlugin(Star):
         action: str,
         event_id: Optional[int] = None,
         keyword: Optional[str] = None,
+        date_filter: Optional[str] = None,
     ) -> str:
         """完成或取消日程
 
@@ -742,17 +746,23 @@ class PlannerPlugin(Star):
             action(str): 操作类型 - complete/cancel
             event_id(int): 日程 ID（可选）
             keyword(str): 日程名称关键字（用于模糊匹配）
+            date_filter(str): 查询日期范围，如 today/tomorrow/week/all（可选）
         """
         if action not in ("complete", "cancel"):
             return "❌ action 必须为 complete 或 cancel"
 
-        events = await self.api.get_events("today")
+        filter_str = date_filter or "today"
+        events = await self.api.get_events(filter_str)
         if not events:
-            return "📋 今天没有日程"
+            return f"📋 {filter_str} 没有日程"
 
         target_id = event_id
         if not target_id and keyword:
             matched = [e for e in events if keyword in e.get("title", "")]
+            if not matched and filter_str == "today":
+                events_all = await self.api.get_events("month")
+                if events_all:
+                    matched = [e for e in events_all if keyword in e.get("title", "")]
             if not matched:
                 return f"❌ 没有找到包含「{keyword}」的日程"
             target_id = matched[0].get("id")
