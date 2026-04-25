@@ -80,7 +80,11 @@ class PlannerPlugin(Star):
         """使用 Playwright 渲染日程截图。
 
         Args:
-            view: day|week|month
+            view: 支持多种视图组合
+                - 日历: day, week, month
+                - 待办: todo_all, todo_today, todo_week, todo_month
+                - 目标: goals
+                - 记事本: notepad
 
         Returns:
             图片 URL 或 None
@@ -88,7 +92,7 @@ class PlannerPlugin(Star):
         if not self._screenshot_enabled:
             return None
 
-        url = f"{self._frontend_url}"
+        url = self._frontend_url
         try:
             browser = await self._get_browser_context()
             page = await browser.new_page(viewport={"width": 390, "height": 844})
@@ -96,20 +100,38 @@ class PlannerPlugin(Star):
             await page.wait_for_timeout(500)
 
             if view != "day":
-                await page.evaluate(f"""
+                main_view = view
+                subview = None
+
+                if view.startswith("todo_"):
+                    main_view = "todo"
+                    subview = view.replace("todo_", "")
+
+                js_code = f"""
                     if (window.ScheduleAppCore && window.ScheduleAppCore.state) {{
-                        window.ScheduleAppCore.state.currentView = '{view}';
-                    }}
-                    if (window.switchView) {{
-                        window.switchView('{view}');
-                    }}
-                """)
+                        window.ScheduleAppCore.state.currentView = '{main_view}';
+                        window.ScheduleAppCore.state.calendarSubview = '{main_view}';
+                """
+                if subview:
+                    js_code += f"""
+                        window.ScheduleAppCore.state.todoSubview = '{subview}';
+                    """
+                js_code += (
+                    """
+                    }
+                    if (window.switchView) {
+                        window.switchView('"""
+                    + main_view
+                    + """');
+                    }
+                """
+                )
+                await page.evaluate(js_code)
                 await page.wait_for_timeout(1500)
 
             screenshot_bytes = await page.screenshot(full_page=False)
             await page.close()
 
-            from io import BytesIO
             import base64
 
             img_base64 = base64.b64encode(screenshot_bytes).decode()
@@ -232,15 +254,34 @@ class PlannerPlugin(Star):
         """查看可视化图表
 
         用法：
-        /图表 今天
-        /图表 本周
+        /图表 今天/本周/本月
+        /图表 日历/待办/目标
+        /图表 日历本周/待办本周
         """
         user_input = _strip_cmd(event.message_str, "图表", "可视化", "截图")
+
         view = "day"
-        if "本周" in user_input or "周" in user_input:
+        text = user_input.strip().lower()
+
+        if "待办" in text:
+            if "本周" in text:
+                view = "todo_week"
+            elif "今天" in text or "今日" in text:
+                view = "todo_today"
+            elif "本月" in text:
+                view = "todo_month"
+            else:
+                view = "todo_all"
+        elif "目标" in text or "goals" in text:
+            view = "goals"
+        elif "记事" in text or "notepad" in text:
+            view = "notepad"
+        elif "本周" in text or "周" in text:
             view = "week"
-        elif "月" in user_input:
+        elif "本月" in text or "月" in text:
             view = "month"
+        elif "今天" in text or "今日" in text:
+            view = "day"
 
         yield event.plain_result("🔄 生成图表...")
 
