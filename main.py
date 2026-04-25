@@ -5,6 +5,8 @@
 
 import asyncio
 import re
+import os
+import tempfile
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Dict, Any
 
@@ -132,10 +134,11 @@ class PlannerPlugin(Star):
             screenshot_bytes = await page.screenshot(full_page=False)
             await page.close()
 
-            import base64
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                f.write(screenshot_bytes)
+                temp_path = f.name
 
-            img_base64 = base64.b64encode(screenshot_bytes).decode()
-            return f"base64://{img_base64}"
+            return f"file://{temp_path}"
         except Exception as e:
             logger.error(f"Screenshot failed: {e}")
             return None
