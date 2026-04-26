@@ -551,48 +551,6 @@ class PlannerPlugin(Star):
 
         yield event.plain_result("\n".join(lines))
 
-    @filter.command("统计", alias={"stats", "完成率"})
-    async def view_stats(self, event: AstrMessageEvent) -> MessageEventResult:
-        """查看完成率统计
-
-        用法：
-        /统计 今天
-        /统计 本周
-        """
-        user_input = _strip_cmd(event.message_str, "统计", "stats", "完成率")
-        date_filter = self._parse_date_filter(user_input) if user_input else "today"
-
-        stats = await self.api.get_stats(date_filter)
-        if not stats:
-            yield event.plain_result("❌ 获取统计失败")
-            return
-
-        total = stats.get("total", 0)
-        completed = stats.get("completed", 0)
-        pending = stats.get("pending", 0)
-        rate = stats.get("completion_rate", 0)
-
-        by_cat = stats.get("by_category", {})
-        cat_names = {"work": "工作", "life": "生活", "study": "学习", "health": "健康"}
-
-        lines = [
-            f"📊 {date_filter} 统计",
-            "━━━━━━━━━━━━━━━",
-            f"总日程：{total}",
-            f"已完成：{completed}",
-            f"待完成：{pending}",
-            f"完成率：{rate}%",
-        ]
-
-        if by_cat:
-            lines.append("")
-            lines.append("按分类：")
-            for cat_id, count in by_cat.items():
-                name = cat_names.get(cat_id, cat_id)
-                lines.append(f"  • {name}: {count}")
-
-        yield event.plain_result("\n".join(lines))
-
     @filter.command("帮助", alias={"help", "使用说明"})
     async def show_help(self, event: AstrMessageEvent) -> MessageEventResult:
         """显示帮助信息"""
@@ -604,8 +562,6 @@ class PlannerPlugin(Star):
             "/计划 明天上午9点写代码2小时\n\n"
             "📅 查看日程\n"
             "/日程 今日 /日程 明天 /日程 本周\n\n"
-            "📊 统计\n"
-            "/统计 今天 /统计 本周\n\n"
             "✅ 完成任务\n"
             "/完成 1\n\n"
             "❌ 取消日程\n"
@@ -693,11 +649,11 @@ class PlannerPlugin(Star):
         date_filter: Optional[str] = None,
         horizon: Optional[str] = None,
     ) -> str:
-        """查看日程/待办/统计/目标
+        """查看日程/待办/目标
 
         Args:
-            type(str): 查询类型 - todos/stats/events/goals
-            date_filter(str): 日期过滤，如 today/week/month（用于 todos/stats/events）
+            type(str): 查询类型 - todos/events/goals
+            date_filter(str): 日期过滤，如 today/week/month（用于 todos/events）
             horizon(str): 规划范围，如 short/semester/long（用于 goals）
         """
         if type == "todos":
@@ -720,16 +676,6 @@ class PlannerPlugin(Star):
                     start_str = "待定"
                 lines.append(f"{i}. {e.get('title', '未知')} [{start_str}]")
             return "\n".join(lines)
-
-        elif type == "stats":
-            filter_str = date_filter or "today"
-            stats = await self.api.get_stats(filter_str)
-            if not stats:
-                return "❌ 获取统计失败"
-            total = stats.get("total", 0)
-            completed = stats.get("completed", 0)
-            rate = stats.get("completion_rate", 0)
-            return f"📊 {filter_str} 统计\n总日程：{total}\n已完成：{completed}\n完成率：{rate}%"
 
         elif type == "events":
             filter_str = date_filter or "today"
@@ -767,7 +713,7 @@ class PlannerPlugin(Star):
             return "\n".join(lines)
 
         else:
-            return f"❌ 不支持的查询类型：{type}，可选：todos/stats/events/goals"
+            return f"❌ 不支持的查询类型：{type}，可选：todos/events/goals"
 
     @filter.llm_tool(name="planner_manage")
     async def planner_manage(
