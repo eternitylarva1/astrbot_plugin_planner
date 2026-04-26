@@ -211,13 +211,23 @@ class PlannerPlugin(Star):
             lines = [f"✅ 已创建 {len(events)} 个日程"]
             for e in events:
                 start = e.get("start_time", "待定")
+                end = e.get("end_time")
                 if start and isinstance(start, str):
                     try:
                         dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
                         start = dt.strftime("%m-%d %H:%M")
                     except:
                         pass
-                lines.append(f"• {e.get('title', '未知')} [{start}]")
+                if end and isinstance(end, str):
+                    try:
+                        dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                        end = dt.strftime("%H:%M")
+                    except:
+                        pass
+                    time_str = f"{start}-{end}"
+                else:
+                    time_str = start
+                lines.append(f"• {e.get('title', '未知')} [{time_str}]")
 
             yield event.plain_result("\n".join(lines))
         except Exception as e:
@@ -653,13 +663,23 @@ class PlannerPlugin(Star):
             lines = [f"✅ 已创建 {len(events)} 个日程"]
             for e in events:
                 start = e.get("start_time", "待定")
+                end = e.get("end_time")
                 if start and isinstance(start, str):
                     try:
                         dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
                         start = dt.strftime("%m-%d %H:%M")
                     except:
                         pass
-                lines.append(f"• {e.get('title', '未知')} [{start}]")
+                if end and isinstance(end, str):
+                    try:
+                        dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                        end = dt.strftime("%H:%M")
+                    except:
+                        pass
+                    time_str = f"{start}-{end}"
+                else:
+                    time_str = start
+                lines.append(f"• {e.get('title', '未知')} [{time_str}]")
             return "\n".join(lines)
         except Exception as e:
             logger.error(f"planner_create 异常: {e}")
