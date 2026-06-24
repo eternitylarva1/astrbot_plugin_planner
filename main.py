@@ -712,8 +712,41 @@ class PlannerPlugin(Star):
                 lines.append(f"{status} {g.get('title', '未知')}")
             return "\n".join(lines)
 
+        elif type == "expenses":
+            filter_str = date_filter or "month"
+            expenses = await self.api.get_expenses(filter_str)
+            if expenses is None:
+                return "❌ 获取支出记录失败"
+            if not expenses:
+                return f"💰 {filter_str} 暂无支出记录"
+            stats = await self.api.get_expense_stats(filter_str)
+            total = stats.get("total", 0) if stats else 0
+            lines = [f"💰 支出记录（{filter_str}），总计：{total}元"]
+            for e in expenses[:20]:
+                cat = e.get("category", "其他") or "其他"
+                amt = e.get("amount", 0)
+                note = e.get("note", "")
+                date = e.get("date", "")[:10] if e.get("date") else ""
+                note_str = f" - {note}" if note else ""
+                lines.append(f"{date} {cat} {amt}元{note_str}")
+            return "\n".join(lines)
+
+        elif type == "budgets":
+            budgets = await self.api.get_budgets()
+            if budgets is None:
+                return "❌ 获取预算失败"
+            if not budgets:
+                return "📋 暂无预算"
+            lines = [f"📊 预算列表（共 {len(budgets)} 项）"]
+            for b in budgets:
+                name = b.get("name", "未知")
+                amount = b.get("amount", 0)
+                spent = b.get("spent", 0)
+                lines.append(f"{name}: {spent}/{amount}元")
+            return "\n".join(lines)
+
         else:
-            return f"❌ 不支持的查询类型：{type}，可选：todos/events/goals"
+            return f"❌ 不支持的查询类型：{type}，可选：todos/events/goals/expenses/budgets"
 
     @filter.llm_tool(name="planner_manage")
     async def planner_manage(
@@ -723,20 +756,38 @@ class PlannerPlugin(Star):
         event_id: Optional[int] = None,
         keyword: Optional[str] = None,
         date_filter: Optional[str] = None,
+        expense_id: Optional[int] = None,
+        budget_id: Optional[int] = None,
     ) -> str:
-        """完成或取消日程
+        """完成或取消日程/支出/预算
 
         Args:
-            action(str): 操作类型 - complete/cancel
-            event_id(int): 日程 ID（可选）
+            action(str): 操作类型 - complete/cancel/delete_expense/delete_budget
+            event_id(int): 日程 ID（complete/cancel时需要）
             keyword(str): 日程名称关键字（用于模糊匹配）
             date_filter(str): 查询日期，支持：
                 - today/tomorrow/week/month/all
                 - 特定日期如 2026-04-26
                 - 自然语言如 明天/下周/本周
+            expense_id(int): 支出记录 ID（delete_expense时需要）
+            budget_id(int): 预算 ID（delete_budget时需要）
         """
+        if action == "delete_expense":
+            if not expense_id:
+                return "❌ 删除支出需要提供 expense_id"
+            if await self.api.delete_expense(expense_id):
+                return "✅ 已删除支出记录"
+            return "❌ 删除失败"
+
+        if action == "delete_budget":
+            if not budget_id:
+                return "❌ 删除预算需要提供 budget_id"
+            if await self.api.delete_budget(budget_id):
+                return "✅ 已删除预算"
+            return "❌ 删除失败"
+
         if action not in ("complete", "cancel"):
-            return "❌ action 必须为 complete 或 cancel"
+            return "❌ action 必须为 complete/cancel/delete_expense/delete_budget"
 
         filter_str = date_filter or "today"
         events = await self.api.get_events(filter_str)
@@ -836,6 +887,258 @@ class PlannerPlugin(Star):
         lines.append("-" * 40)
         lines.append(f"共 {len(subtasks)} 项，约 {total} 分钟")
         return "\n".join(lines)
+
+    @filter.llm_tool(name="planner_expenses")
+    async def planner_expenses(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+        amount: Optional[float] = None,
+        category: Optional[str] = None,
+        note: Optional[str] = None,
+        expense_id: Optional[int] = None,
+        date_filter: Optional[str] = None,
+    ) -> str:
+        """支出记录管理
+
+        Args:
+            action(str): 操作类型
+                - list: 列出支出记录（需要 date_filter: today/week/month）
+                - create: 记录支出（需要 amount, 可选 category/note）
+                - delete: 删除支出（需要 expense_id）
+            amount(float): 支出金额（create时需要）
+            category(str): 支出分类，如"餐饮/交通/购物/娱乐/其他"
+            note(str): 支出备注
+            expense_id(int): 支出记录ID（delete时需要）
+            date_filter(str): 日期过滤（list时使用：today/week/month）
+        """
+        if action == "list":
+            filter_str = date_filter or "month"
+            expenses = await self.api.get_expenses(filter_str)
+            if expenses is None:
+                return "❌ 获取支出记录失败"
+            if not expenses:
+                return f"💰 {filter_str} 暂无支出记录"
+            stats = await self.api.get_expense_stats(filter_str)
+            total = stats.get("total", 0) if stats else 0
+            lines = [f"💰 支出记录（{filter_str}），总计：{total}元（共 {len(expenses)} 笔）"]
+            for e in expenses[:20]:
+                cat = e.get("category", "其他") or "其他"
+                amt = e.get("amount", 0)
+                exp_note = e.get("note", "")
+                date = e.get("date", "")[:10] if e.get("date") else ""
+                note_str = f" - {exp_note}" if exp_note else ""
+                lines.append(f"{date} {cat} {amt}元{note_str}")
+            return "\n".join(lines)
+
+        elif action == "create":
+            if amount is None:
+                return "❌ 记录支出需要提供金额（amount）"
+            expense_data = {"amount": amount}
+            if category:
+                expense_data["category"] = category
+            if note:
+                expense_data["note"] = note
+            result = await self.api.create_expense(expense_data)
+            if result:
+                cat_str = category or "未分类"
+                return f"✅ 已记录支出：{amount}元（{cat_str}）"
+            return "❌ 记录失败"
+
+        elif action == "delete":
+            if not expense_id:
+                return "❌ 删除支出需要提供 expense_id"
+            if await self.api.delete_expense(expense_id):
+                return "✅ 已删除支出记录"
+            return "❌ 删除失败"
+
+        else:
+            return "❌ action 必须为 list/create/delete"
+
+    @filter.llm_tool(name="planner_budgets")
+    async def planner_budgets(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+        name: Optional[str] = None,
+        amount: Optional[float] = None,
+        budget_id: Optional[int] = None,
+    ) -> str:
+        """预算管理
+
+        Args:
+            action(str): 操作类型
+                - list: 列出所有预算
+                - create: 创建预算（需要 name, amount）
+                - view: 查看单个预算详情（需要 budget_id）
+                - delete: 删除预算（需要 budget_id）
+            name(str): 预算名称（create时需要）
+            amount(float): 预算金额（create时需要）
+            budget_id(int): 预算ID（view/delete时需要）
+        """
+        if action == "list":
+            budgets = await self.api.get_budgets()
+            if budgets is None:
+                return "❌ 获取预算失败"
+            if not budgets:
+                return "📋 暂无预算"
+            lines = [f"📊 预算列表（共 {len(budgets)} 项）"]
+            for b in budgets:
+                b_name = b.get("name", "未知")
+                b_amount = b.get("amount", 0)
+                b_spent = b.get("spent", 0)
+                b_id = b.get("id")
+                pct = int(b_spent / b_amount * 100) if b_amount > 0 else 0
+                lines.append(f"{b_name}: {b_spent}/{b_amount}元 ({pct}%) [ID:{b_id}]")
+            return "\n".join(lines)
+
+        elif action == "create":
+            if not name:
+                return "❌ 创建预算需要提供名称（name）"
+            if amount is None:
+                return "❌ 创建预算需要提供金额（amount）"
+            budget_data = {"name": name, "amount": amount}
+            result = await self.api.create_budget(budget_data)
+            if result:
+                return f"✅ 已创建预算：{name}（{amount}元）"
+            return "❌ 创建失败"
+
+        elif action == "view":
+            if not budget_id:
+                return "❌ 查看预算需要提供 budget_id"
+            budget = await self.api.get_budget(budget_id)
+            if not budget:
+                return "❌ 预算不存在"
+            b_name = budget.get("name", "未知")
+            b_amount = budget.get("amount", 0)
+            b_spent = budget.get("spent", 0)
+            b_id = budget.get("id")
+            pct = int(b_spent / b_amount * 100) if b_amount > 0 else 0
+            lines = [
+                f"📊 预算详情 [ID:{b_id}]",
+                f"名称：{b_name}",
+                f"预算：{b_amount}元",
+                f"已用：{b_spent}元",
+                f"进度：{pct}%",
+            ]
+            return "\n".join(lines)
+
+        elif action == "delete":
+            if not budget_id:
+                return "❌ 删除预算需要提供 budget_id"
+            if await self.api.delete_budget(budget_id):
+                return "✅ 已删除预算"
+            return "❌ 删除失败"
+
+        else:
+            return "❌ action 必须为 list/create/view/delete"
+
+    @filter.llm_tool(name="planner_notes")
+    async def planner_notes(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        note_id: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> str:
+        """笔记管理
+
+        Args:
+            action(str): 操作类型
+                - list: 列出所有笔记
+                - create: 创建笔记（需要 title, 可选 content）
+                - view: 查看笔记内容（需要 note_id）
+                - update: 更新笔记（需要 note_id, 可选 title/content）
+                - delete: 删除笔记（需要 note_id）
+                - search: 搜索笔记（需要 query 关键字）
+            title(str): 笔记标题（create时需要）
+            content(str): 笔记内容（create/update时可选）
+            note_id(int): 笔记ID（view/update/delete时需要）
+            query(str): 搜索关键字（search时需要）
+        """
+        if action == "list":
+            notes = await self.api.get_notes()
+            if notes is None:
+                return "❌ 获取笔记失败"
+            if not notes:
+                return "📝 暂无笔记"
+            lines = [f"📝 笔记列表（共 {len(notes)} 篇）"]
+            for n in notes[:20]:
+                n_title = n.get("title", "无标题")
+                n_id = n.get("id")
+                n_updated = n.get("updated_at", "")[:10] if n.get("updated_at") else ""
+                lines.append(f"{n_id}. {n_title} [{n_updated}]")
+            return "\n".join(lines)
+
+        elif action == "create":
+            if not title:
+                return "❌ 创建笔记需要提供标题（title）"
+            note_data = {"title": title}
+            if content:
+                note_data["content"] = content
+            result = await self.api.create_note(note_data)
+            if result:
+                return f"✅ 已创建笔记：{title}"
+            return "❌ 创建失败"
+
+        elif action == "view":
+            if not note_id:
+                return "❌ 查看笔记需要提供 note_id"
+            note = await self.api.get_note(note_id)
+            if not note:
+                return "❌ 笔记不存在"
+            n_title = note.get("title", "无标题")
+            n_content = note.get("content", "")
+            n_created = note.get("created_at", "")[:19] if note.get("created_at") else ""
+            lines = [f"📝 {n_title}", f"创建于：{n_created}", ""]
+            if n_content:
+                lines.append(n_content)
+            else:
+                lines.append("（无内容）")
+            return "\n".join(lines)
+
+        elif action == "update":
+            if not note_id:
+                return "❌ 更新笔记需要提供 note_id"
+            note_data = {}
+            if title:
+                note_data["title"] = title
+            if content:
+                note_data["content"] = content
+            if not note_data:
+                return "❌ 请提供要更新的内容（title 或 content）"
+            result = await self.api.update_note(note_id, note_data)
+            if result:
+                return f"✅ 已更新笔记"
+            return "❌ 更新失败"
+
+        elif action == "delete":
+            if not note_id:
+                return "❌ 删除笔记需要提供 note_id"
+            if await self.api.delete_note(note_id):
+                return "✅ 已删除笔记"
+            return "❌ 删除失败"
+
+        elif action == "search":
+            if not query:
+                return "❌ 搜索笔记需要提供关键字（query）"
+            notes = await self.api.get_notes()
+            if notes is None:
+                return "❌ 获取笔记失败"
+            matched = [n for n in notes if query.lower() in (n.get("title", "") + n.get("content", "")).lower()]
+            if not matched:
+                return f"❌ 没有找到包含「{query}」的笔记"
+            lines = [f"🔍 搜索结果（{len(matched)} 篇）"]
+            for n in matched[:20]:
+                n_title = n.get("title", "无标题")
+                n_id = n.get("id")
+                lines.append(f"{n_id}. {n_title}")
+            return "\n".join(lines)
+
+        else:
+            return "❌ action 必须为 list/create/view/update/delete/search"
 
     async def terminate(self):
         """插件卸载时关闭浏览器"""

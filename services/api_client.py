@@ -335,6 +335,275 @@ class ApiClient:
         )
         return result is not None
 
+    # ==================== Events History and Recovery ====================
+
+    async def get_deleted_events(self) -> Optional[List[Dict]]:
+        """Get list of deleted events that can be restored."""
+        result = await self._request("GET", "/api/deleted-events")
+        return result if isinstance(result, list) else None
+
+    async def restore_deleted_event(self, event_id: int) -> Optional[Dict]:
+        """Restore a deleted event."""
+        return await self._request("POST", f"/api/deleted-events/{event_id}/restore")
+
+    async def permanent_delete_event(self, event_id: int) -> bool:
+        """Permanently delete an event from backup."""
+        result = await self._request("DELETE", f"/api/deleted-events/{event_id}")
+        return result is not None
+
+    async def get_event_history(self) -> Optional[List[Dict]]:
+        """Get all event history."""
+        result = await self._request("GET", "/api/event-history")
+        return result if isinstance(result, list) else None
+
+    async def get_event_modifications(self) -> Optional[List[Dict]]:
+        """Get event modification history for undo."""
+        result = await self._request("GET", "/api/event-modifications")
+        return result if isinstance(result, list) else None
+
+    async def undo_event_modification(self, modification_id: int) -> Optional[Dict]:
+        """Restore event to previous state."""
+        return await self._request("POST", f"/api/event-modifications/{modification_id}/undo")
+
+    # ==================== Goals Extended ====================
+
+    async def get_goal_conversations(self, goal_id: int) -> Optional[List[Dict]]:
+        """Get conversation history for a goal."""
+        result = await self._request("GET", f"/api/goals/{goal_id}/conversations")
+        return result if isinstance(result, list) else None
+
+    async def add_goal_conversation(self, goal_id: int, role: str, content: str) -> Optional[Dict]:
+        """Add a conversation message to a goal."""
+        return await self._request(
+            "POST", f"/api/goals/{goal_id}/conversations",
+            json_data={"role": role, "content": content}
+        )
+
+    async def get_goal_deliverables(self, goal_id: int) -> Optional[List[Dict]]:
+        """Get deliverables for a goal."""
+        result = await self._request("GET", f"/api/goals/{goal_id}/deliverables")
+        return result if isinstance(result, list) else None
+
+    async def create_goal_deliverable(self, goal_id: int, deliverable_data: Dict) -> Optional[Dict]:
+        """Create a deliverable for a goal."""
+        return await self._request(
+            "POST", f"/api/goals/{goal_id}/deliverables",
+            json_data=deliverable_data
+        )
+
+    async def update_goal_deliverable(self, deliverable_id: int, data: Dict) -> Optional[Dict]:
+        """Update a goal deliverable."""
+        return await self._request(
+            "PUT", f"/api/goals/deliverables/{deliverable_id}",
+            json_data=data
+        )
+
+    async def delete_goal_deliverable(self, deliverable_id: int) -> bool:
+        """Delete a goal deliverable."""
+        result = await self._request("DELETE", f"/api/goals/deliverables/{deliverable_id}")
+        return result is not None
+
+    async def ai_reschedule(self, goal_content: str) -> Optional[Dict]:
+        """AI global rescheduling."""
+        return await self._request(
+            "POST", "/api/goals/ai/reschedule",
+            json_data={"goal_content": goal_content}
+        )
+
+    # ==================== AI Providers ====================
+
+    async def get_ai_providers(self) -> Optional[List[Dict]]:
+        """Get all AI provider configurations."""
+        result = await self._request("GET", "/api/ai-providers")
+        return result if isinstance(result, list) else None
+
+    async def create_ai_provider(self, provider_data: Dict) -> Optional[Dict]:
+        """Create a new AI provider configuration."""
+        return await self._request("POST", "/api/ai-providers", json_data=provider_data)
+
+    async def update_ai_provider(self, provider_id: int, data: Dict) -> Optional[Dict]:
+        """Update an AI provider configuration."""
+        return await self._request("PUT", f"/api/ai-providers/{provider_id}", json_data=data)
+
+    async def delete_ai_provider(self, provider_id: int) -> bool:
+        """Delete an AI provider configuration."""
+        result = await self._request("DELETE", f"/api/ai-providers/{provider_id}")
+        return result is not None
+
+    async def activate_ai_provider(self, provider_id: int) -> Optional[Dict]:
+        """Activate an AI provider configuration."""
+        return await self._request("PUT", f"/api/ai-providers/{provider_id}/activate")
+
+    # ==================== Expenses ====================
+
+    async def get_expenses(self, date_filter: str = "month") -> Optional[List[Dict]]:
+        """Get expenses by date filter."""
+        result = await self._request("GET", "/api/expenses", params={"date": date_filter})
+        return result if isinstance(result, list) else None
+
+    async def create_expense(self, expense_data: Dict) -> Optional[Dict]:
+        """Create an expense record."""
+        return await self._request("POST", "/api/expenses", json_data=expense_data)
+
+    async def update_expense(self, expense_id: int, expense_data: Dict) -> Optional[Dict]:
+        """Update an expense record."""
+        return await self._request("PUT", f"/api/expenses/{expense_id}", json_data=expense_data)
+
+    async def delete_expense(self, expense_id: int) -> bool:
+        """Delete an expense (soft delete)."""
+        result = await self._request("DELETE", f"/api/expenses/{expense_id}")
+        return result is not None
+
+    async def get_expense_stats(self, date_filter: str = "month") -> Optional[Dict]:
+        """Get expense statistics."""
+        return await self._request("GET", "/api/expenses/stats", params={"date": date_filter})
+
+    async def get_expense_categories(self) -> Optional[List[Dict]]:
+        """Get expense categories."""
+        result = await self._request("GET", "/api/expenses/categories")
+        return result if isinstance(result, list) else None
+
+    async def create_expense_category(self, category_data: Dict) -> Optional[Dict]:
+        """Create an expense category."""
+        return await self._request("POST", "/api/expenses/categories", json_data=category_data)
+
+    # ==================== Budgets ====================
+
+    async def get_budgets(self) -> Optional[List[Dict]]:
+        """Get all budgets with spent/remaining stats."""
+        result = await self._request("GET", "/api/budgets")
+        return result if isinstance(result, list) else None
+
+    async def create_budget(self, budget_data: Dict) -> Optional[Dict]:
+        """Create a new budget."""
+        return await self._request("POST", "/api/budgets", json_data=budget_data)
+
+    async def get_budget(self, budget_id: int) -> Optional[Dict]:
+        """Get a single budget with stats."""
+        return await self._request("GET", f"/api/budgets/{budget_id}")
+
+    async def update_budget(self, budget_id: int, budget_data: Dict) -> Optional[Dict]:
+        """Update a budget."""
+        return await self._request("PUT", f"/api/budgets/{budget_id}", json_data=budget_data)
+
+    async def delete_budget(self, budget_id: int) -> bool:
+        """Delete a budget."""
+        result = await self._request("DELETE", f"/api/budgets/{budget_id}")
+        return result is not None
+
+    async def get_budget_expenses(self, budget_id: int) -> Optional[List[Dict]]:
+        """Get expenses for a specific budget."""
+        result = await self._request("GET", f"/api/budgets/{budget_id}/expenses")
+        return result if isinstance(result, list) else None
+
+    async def get_budget_templates(self) -> Optional[List[Dict]]:
+        """Get budget templates."""
+        result = await self._request("GET", "/api/budget-templates")
+        return result if isinstance(result, list) else None
+
+    async def create_budget_template(self, template_data: Dict) -> Optional[Dict]:
+        """Create a budget template."""
+        return await self._request("POST", "/api/budget-templates", json_data=template_data)
+
+    # ==================== Notes ====================
+
+    async def get_notes(self) -> Optional[List[Dict]]:
+        """Get all notes."""
+        result = await self._request("GET", "/api/notes")
+        return result if isinstance(result, list) else None
+
+    async def create_note(self, note_data: Dict) -> Optional[Dict]:
+        """Create a new note."""
+        return await self._request("POST", "/api/notes", json_data=note_data)
+
+    async def get_note(self, note_id: int) -> Optional[Dict]:
+        """Get a single note."""
+        return await self._request("GET", f"/api/notes/{note_id}")
+
+    async def update_note(self, note_id: int, note_data: Dict) -> Optional[Dict]:
+        """Update a note."""
+        return await self._request("PUT", f"/api/notes/{note_id}", json_data=note_data)
+
+    async def delete_note(self, note_id: int) -> bool:
+        """Delete a note."""
+        result = await self._request("DELETE", f"/api/notes/{note_id}")
+        return result is not None
+
+    async def get_note_conversations(self, note_id: int) -> Optional[List[Dict]]:
+        """Get conversation history for a note."""
+        result = await self._request("GET", f"/api/notes/{note_id}/conversations")
+        return result if isinstance(result, list) else None
+
+    async def chat_note(self, note_id: int, user_input: str) -> Optional[Dict]:
+        """Chat with AI about a note."""
+        return await self._request(
+            "POST", f"/api/notes/{note_id}/chat",
+            json_data={"user_input": user_input}
+        )
+
+    async def delete_note_conversations(self, note_id: int) -> bool:
+        """Clear conversation history for a note."""
+        result = await self._request("DELETE", f"/api/notes/{note_id}/conversations")
+        return result is not None
+
+    # ==================== Note Groups ====================
+
+    async def get_note_groups(self) -> Optional[List[Dict]]:
+        """Get note groups."""
+        result = await self._request("GET", "/api/note-groups")
+        return result if isinstance(result, list) else None
+
+    async def create_note_group(self, group_data: Dict) -> Optional[Dict]:
+        """Create a note group."""
+        return await self._request("POST", "/api/note-groups", json_data=group_data)
+
+    async def update_note_group(self, group_id: int, group_data: Dict) -> Optional[Dict]:
+        """Update a note group."""
+        return await self._request("PUT", f"/api/note-groups/{group_id}", json_data=group_data)
+
+    async def delete_note_group(self, group_id: int) -> bool:
+        """Delete a note group."""
+        result = await self._request("DELETE", f"/api/note-groups/{group_id}")
+        return result is not None
+
+    # ==================== User Contexts ====================
+
+    async def get_user_contexts(self) -> Optional[List[Dict]]:
+        """Get all user contexts."""
+        result = await self._request("GET", "/api/user-contexts")
+        return result if isinstance(result, list) else None
+
+    async def create_user_context(self, context_data: Dict) -> Optional[Dict]:
+        """Create a user context."""
+        return await self._request("POST", "/api/user-contexts", json_data=context_data)
+
+    async def update_user_context(self, context_id: int, context_data: Dict) -> Optional[Dict]:
+        """Update a user context."""
+        return await self._request("PUT", f"/api/user-contexts/{context_id}", json_data=context_data)
+
+    async def delete_user_context(self, context_id: int) -> bool:
+        """Delete a user context."""
+        result = await self._request("DELETE", f"/api/user-contexts/{context_id}")
+        return result is not None
+
+    async def reorder_user_contexts(self, ordered_ids: List[int]) -> bool:
+        """Reorder user contexts."""
+        result = await self._request("PUT", "/api/user-contexts/reorder", json_data={"ordered_ids": ordered_ids})
+        return result is not None
+
+    # ==================== Settings Extended ====================
+
+    async def cleanup_test_entries(self) -> bool:
+        """Cleanup test entries."""
+        result = await self._request("POST", "/api/settings/cleanup_test_entries")
+        return result is not None
+
+    # ==================== LLM Extended ====================
+
+    async def llm_parse_expense(self, text: str) -> Optional[Dict]:
+        """Parse natural language expense record."""
+        return await self._request("POST", "/api/llm/parse_expense", json_data={"text": text})
+
 
 _api_client: Optional[ApiClient] = None
 
