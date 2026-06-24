@@ -7,6 +7,7 @@ import asyncio
 import re
 import os
 import subprocess
+import sys
 import tempfile
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Dict, Any
@@ -84,17 +85,35 @@ class PlannerPlugin(Star):
                 self._browser_context = await pw.chromium.launch(headless=True)
             except Exception:
                 logger.warning("Playwright 浏览器未安装，正在自动安装 chromium...")
-                try:
-                    subprocess.run(
-                        ["playwright", "install", "chromium"],
-                        check=True, capture_output=True, timeout=120,
-                    )
-                    logger.info("Playwright chromium 安装成功")
-                except Exception as e:
-                    logger.error(f"Playwright 自动安装失败: {e}")
-                    raise
+                await self._install_playwright_browser()
                 self._browser_context = await pw.chromium.launch(headless=True)
         return self._browser_context
+
+    async def _install_playwright_browser(self):
+        """尝试安装 Playwright chromium 浏览器，依次尝试多种命令"""
+        commands = [
+            ["playwright", "install", "chromium"],
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+        ]
+        last_error = None
+        for cmd in commands:
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=300,
+                )
+                if result.returncode == 0:
+                    logger.info(f"Playwright chromium 安装成功: {' '.join(cmd)}")
+                    return
+                logger.warning(f"命令 {' '.join(cmd)} 失败: {result.stderr.strip() or result.stdout.strip()}")
+                last_error = result.stderr or result.stdout or "未知错误"
+            except FileNotFoundError:
+                logger.warning(f"命令 {' '.join(cmd)} 不存在，尝试下一种...")
+                last_error = f"命令 {' '.join(cmd)} 不存在"
+            except Exception as e:
+                logger.warning(f"命令 {' '.join(cmd)} 异常: {e}")
+                last_error = str(e)
+        logger.error(f"Playwright 自动安装失败，请手动运行: playwright install chromium")
+        raise RuntimeError(f"Playwright 浏览器安装失败: {last_error}")
 
     async def _render_schedule_screenshot(self, view: str = "day") -> Optional[str]:
         """使用 Playwright 渲染日程截图。
