@@ -6,6 +6,7 @@
 import asyncio
 import re
 import os
+import subprocess
 import tempfile
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Dict, Any
@@ -76,10 +77,23 @@ class PlannerPlugin(Star):
         logger.info(f"计划助手插件已加载，API: {api_base}")
 
     async def _get_browser_context(self):
-        """获取或创建 Playwright browser context"""
+        """获取或创建 Playwright browser context，浏览器缺失时自动安装"""
         if self._browser_context is None:
             pw = await async_playwright().start()
-            self._browser_context = await pw.chromium.launch(headless=True)
+            try:
+                self._browser_context = await pw.chromium.launch(headless=True)
+            except Exception:
+                logger.warning("Playwright 浏览器未安装，正在自动安装 chromium...")
+                try:
+                    subprocess.run(
+                        ["playwright", "install", "chromium"],
+                        check=True, capture_output=True, timeout=120,
+                    )
+                    logger.info("Playwright chromium 安装成功")
+                except Exception as e:
+                    logger.error(f"Playwright 自动安装失败: {e}")
+                    raise
+                self._browser_context = await pw.chromium.launch(headless=True)
         return self._browser_context
 
     async def _render_schedule_screenshot(self, view: str = "day") -> Optional[str]:
