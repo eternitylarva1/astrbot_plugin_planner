@@ -1016,9 +1016,15 @@ class PlannerPlugin(Star):
                 return f"💰 {filter_str} 暂无支出记录"
             stats = await self.api.get_expense_stats(filter_str)
             total = stats.get("total", 0) if stats else 0
+            # 分类ID → 中文名映射（显示用）
+            _cat_display = {
+                "food": "餐饮", "transport": "交通", "shopping": "购物",
+                "entertainment": "娱乐", "other": "其他",
+            }
             lines = [f"💰 支出记录（{filter_str}），总计：{total}元（共 {len(expenses)} 笔）"]
             for e in expenses[:20]:
-                cat = e.get("category", "其他") or "其他"
+                cat_id = e.get("category", "other") or "other"
+                cat = _cat_display.get(cat_id, cat_id)
                 amt = e.get("amount", 0)
                 exp_note = e.get("note", "")
                 date = e.get("date", "")[:10] if e.get("date") else ""
@@ -1031,7 +1037,12 @@ class PlannerPlugin(Star):
                 return "❌ 记录支出需要提供金额（amount）"
             expense_data = {"amount": amount}
             if category:
-                expense_data["category"] = category
+                # 将中文分类名映射为英文ID（前端/后端按ID匹配）
+                _cat_map = {
+                    "餐饮": "food", "交通": "transport", "购物": "shopping",
+                    "娱乐": "entertainment", "其他": "other",
+                }
+                expense_data["category"] = _cat_map.get(category, category)
             if note:
                 expense_data["note"] = note
             result = await self.api.create_expense(expense_data)
