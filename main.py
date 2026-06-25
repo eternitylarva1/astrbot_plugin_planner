@@ -689,6 +689,107 @@ class PlannerPlugin(Star):
 
         yield event.plain_result("\n".join(lines))
 
+    @filter.command("现状", alias={"我的现状", "个人现状"})
+    async def manage_context(self, event: AstrMessageEvent) -> MessageEventResult:
+        """管理个人现状
+
+        用法：
+        /现状 - 查看所有现状
+        /现状 添加 我目前在学Python - 添加现状
+        /现状 编辑 1 我目前在学Go - 修改现状
+        /现状 删除 1 - 删除现状
+        """
+        user_input = _strip_cmd(event.message_str, "现状", "我的现状", "个人现状")
+
+        if not user_input:
+            # 列出所有现状
+            contexts = await self.api.get_user_contexts()
+            if contexts is None:
+                yield event.plain_result("❌ 获取现状失败")
+                return
+            if not contexts:
+                yield event.plain_result("📋 暂无现状记录\n用法：/现状 添加 <内容>")
+                return
+            lines = ["📋 我的现状", "━━━━━━━━━━━━━━━"]
+            for i, ctx in enumerate(contexts, 1):
+                content = ctx.get("content", "")
+                lines.append(f"{i}. {content}")
+            yield event.plain_result("\n".join(lines))
+            return
+
+        parts = user_input.split(maxsplit=1)
+        action = parts[0].strip().lower()
+
+        if action == "添加":
+            if len(parts) < 2:
+                yield event.plain_result("❗请提供现状内容\n用法：/现状 添加 <内容>")
+                return
+            content = parts[1].strip()
+            result = await self.api.create_user_context({"content": content})
+            if result:
+                yield event.plain_result(f"✅ 已添加现状：{content}")
+            else:
+                yield event.plain_result("❌ 添加失败")
+
+        elif action == "编辑":
+            if len(parts) < 2:
+                yield event.plain_result("❗用法：/现状 编辑 <编号> <新内容>")
+                return
+            edit_parts = parts[1].split(maxsplit=1)
+            if len(edit_parts) < 2:
+                yield event.plain_result("❗用法：/现状 编辑 <编号> <新内容>")
+                return
+            try:
+                idx = int(edit_parts[0]) - 1
+            except ValueError:
+                yield event.plain_result("❗编号必须是数字")
+                return
+            contexts = await self.api.get_user_contexts()
+            if not contexts or idx < 0 or idx >= len(contexts):
+                yield event.plain_result("❗编号无效")
+                return
+            ctx_id = contexts[idx].get("id")
+            if not ctx_id:
+                yield event.plain_result("❌ 编辑失败")
+                return
+            new_content = edit_parts[1].strip()
+            result = await self.api.update_user_context(int(ctx_id), {"content": new_content})
+            if result:
+                yield event.plain_result(f"✅ 已更新")
+            else:
+                yield event.plain_result("❌ 编辑失败")
+
+        elif action == "删除":
+            if len(parts) < 2:
+                yield event.plain_result("❗用法：/现状 删除 <编号>")
+                return
+            try:
+                idx = int(parts[1].strip()) - 1
+            except ValueError:
+                yield event.plain_result("❗编号必须是数字")
+                return
+            contexts = await self.api.get_user_contexts()
+            if not contexts or idx < 0 or idx >= len(contexts):
+                yield event.plain_result("❗编号无效")
+                return
+            ctx_id = contexts[idx].get("id")
+            if not ctx_id:
+                yield event.plain_result("❌ 删除失败")
+                return
+            if await self.api.delete_user_context(int(ctx_id)):
+                yield event.plain_result("✅ 已删除")
+            else:
+                yield event.plain_result("❌ 删除失败")
+
+        else:
+            yield event.plain_result(
+                "❗操作方式\n\n"
+                "/现状 - 查看\n"
+                "/现状 添加 <内容>\n"
+                "/现状 编辑 <编号> <新内容>\n"
+                "/现状 删除 <编号>"
+            )
+
     @filter.llm_tool(name="planner_create")
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
         """创建日程
@@ -1245,6 +1346,66 @@ class PlannerPlugin(Star):
 
         else:
             return "❌ action 必须为 list/create/view/update/delete/search"
+
+    @filter.llm_tool(name="planner_context")
+    async def planner_context(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+        content: Optional[str] = None,
+        context_id: Optional[int] = None,
+    ) -> str:
+        """个人现状管理
+
+        当用户想查看/添加/修改/删除个人现状时使用，如"我目前的状态"、"添加一个现状"。
+
+        Args:
+            action(str): 操作类型
+                - list: 列出所有现状
+                - add: 添加现状（需要 content）
+                - update: 修改现状（需要 context_id, content）
+                - delete: 删除现状（需要 context_id）
+            content(str): 现状内容（add/update时需要）
+            context_id(int): 现状ID（update/delete时需要）
+        """
+        if action == "list":
+            contexts = await self.api.get_user_contexts()
+            if contexts is None:
+                return "❌ 获取现状失败"
+            if not contexts:
+                return "📋 暂无现状记录"
+            lines = ["📋 我的现状", "━━━━━━━━━━━━━━━"]
+            for i, ctx in enumerate(contexts, 1):
+                lines.append(f"{i}. {ctx.get('content', '')}")
+            return "\n".join(lines)
+
+        elif action == "add":
+            if not content or not content.strip():
+                return "❌ 添加现状需要提供 content"
+            result = await self.api.create_user_context({"content": content.strip()})
+            if result:
+                return f"✅ 已添加现状：{content}"
+            return "❌ 添加失败"
+
+        elif action == "update":
+            if not context_id:
+                return "❌ 修改现状需要提供 context_id"
+            if not content or not content.strip():
+                return "❌ 修改现状需要提供 content"
+            result = await self.api.update_user_context(context_id, {"content": content.strip()})
+            if result:
+                return f"✅ 已更新现状"
+            return "❌ 修改失败"
+
+        elif action == "delete":
+            if not context_id:
+                return "❌ 删除现状需要提供 context_id"
+            if await self.api.delete_user_context(context_id):
+                return "✅ 已删除现状"
+            return "❌ 删除失败"
+
+        else:
+            return "❌ action 必须为 list/add/update/delete"
 
     async def terminate(self):
         """插件卸载时关闭浏览器"""

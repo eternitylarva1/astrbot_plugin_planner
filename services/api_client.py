@@ -586,9 +586,9 @@ class ApiClient:
         result = await self._request("DELETE", f"/api/user-contexts/{context_id}")
         return result is not None
 
-    async def reorder_user_contexts(self, ordered_ids: List[int]) -> bool:
+    async def reorder_user_contexts(self, context_ids: List[int]) -> bool:
         """Reorder user contexts."""
-        result = await self._request("PUT", "/api/user-contexts/reorder", json_data={"ordered_ids": ordered_ids})
+        result = await self._request("PUT", "/api/user-contexts/reorder", json_data={"context_ids": context_ids})
         return result is not None
 
     # ==================== Settings Extended ====================
