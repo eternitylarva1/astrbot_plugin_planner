@@ -2,14 +2,24 @@
 
 本文档记录 `astrbot_plugin_planner` 的功能更新。
 
-## [2.0.2] - 2026-04-25
-
-### Fixed
-- `planner_manage` 支持 `date_filter` 参数，可查询任意日期
-- 优化关键词匹配：today 查询不到时自动扩大搜索范围
+## [2.1.0] - 2026-06-25
 
 ### Added
-- 截图支持更多视图子选项
+- 同步后端全部 API：Expenses / Budgets / Notes / Note Groups / User Contexts / AI Providers / Event history & restore（`services/api_client.py` 新增 59 个方法）
+- 新增 3 个 LLM 工具：`planner_expenses` / `planner_budgets` / `planner_notes`
+- 扩展 `planner_query` 和 `planner_manage` 支持支出、预算操作
+- 图表新增视图：`/图表 预算`、`/图表 笔记`、`/图表 笔记:<id>`
+- 帮助命令更新，包含所有新增功能说明
+- Playwright 浏览器缺失时自动安装，无需手动操作
+- `llm_parse_expense` 接口支持
+
+### Fixed
+- 支出分类名自动映射（中文→英文 ID），解决保存后显示为"其他"的问题
+- Playwright 自动安装增加 `python -m playwright` 兜底命令
+
+### Changed
+- `main.py` 行数从 845 → 1243，LLM 工具从 5 个增至 8 个
+- 更新插件描述，包含支出/预算/笔记管理能力
 
 ## [2.0.1] - 2026-04-25
 

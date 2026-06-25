@@ -54,7 +54,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   /ai规划 - AI 模糊目标规划
   /拆解   - 任务拆解
 """,
-    "1.0.0",
+    "2.1.0",
     "https://github.com/eternitylarva1/astrbot_plugin_planner",
 )
 class PlannerPlugin(Star):
