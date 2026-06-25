@@ -141,10 +141,15 @@ class PlannerPlugin(Star):
             if view != "day":
                 main_view = view
                 subview = None
+                note_data = None
 
                 if view.startswith("todo_"):
                     main_view = "todo"
                     subview = view.replace("todo_", "")
+
+                is_note_detail = view.startswith("note_")
+                if view == "budget" or view == "notes":
+                    main_view = "notepad"
 
                 js_code = f"""
                     if (window.ScheduleAppCore && window.ScheduleAppCore.state) {{
@@ -155,6 +160,27 @@ class PlannerPlugin(Star):
                     js_code += f"""
                         window.ScheduleAppCore.state.todoSubview = '{subview}';
                     """
+
+                if view == "budget":
+                    js_code += """
+                        window.ScheduleAppCore.state.notepadSubview = 'expense';
+                    """
+                elif view == "notes":
+                    js_code += """
+                        window.ScheduleAppCore.state.notepadSubview = 'notes';
+                    """
+                elif is_note_detail:
+                    note_id_str = view.replace("note_", "")
+                    try:
+                        note_id = int(note_id_str)
+                    except ValueError:
+                        note_id = 0
+                    if note_id > 0:
+                        note_data = await self.api.get_note(note_id)
+                    js_code += """
+                        window.ScheduleAppCore.state.notepadSubview = 'notes';
+                    """
+
                 js_code += (
                     """
                     }
@@ -167,6 +193,20 @@ class PlannerPlugin(Star):
                 )
                 await page.evaluate(js_code)
                 await page.wait_for_timeout(1500)
+
+                # If opening a specific note detail, open it after view renders
+                if is_note_detail and note_data:
+                    import json
+                    note_json = json.dumps(note_data, ensure_ascii=False)
+                    detail_js = f"""
+                        setTimeout(function() {{
+                            if (window.ScheduleAppNoteEditor && window.ScheduleAppNoteEditor.showNoteDetail) {{
+                                window.ScheduleAppNoteEditor.showNoteDetail({note_json});
+                            }}
+                        }}, 800);
+                    """
+                    await page.evaluate(detail_js)
+                    await page.wait_for_timeout(1000)
 
             screenshot_bytes = await page.screenshot(full_page=False)
             await page.close()
@@ -324,7 +364,16 @@ class PlannerPlugin(Star):
         view = "day"
         text = user_input.strip().lower()
 
-        if "待办" in text:
+        if "预算" in text or "支出" in text:
+            view = "budget"
+        elif "笔记" in text:
+            import re as re_mod
+            note_match = re_mod.search(r'笔记\s*[:：]?\s*(\d+)', text)
+            if note_match:
+                view = f"note_{note_match.group(1)}"
+            else:
+                view = "notes"
+        elif "待办" in text:
             if "本周" in text:
                 view = "todo_week"
             elif "今天" in text or "今日" in text:
