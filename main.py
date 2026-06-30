@@ -247,6 +247,16 @@ class PlannerPlugin(Star):
         else:
             return "today"
 
+    @staticmethod
+    def _normalize_date_filter(date_str: str) -> str:
+        """将 LLM 可能传入的日期别名翻译为后端可识别的格式。"""
+        now = datetime.now()
+        aliases = {
+            "tomorrow": (now + timedelta(days=1)).strftime("%Y-%m-%d"),
+            "yesterday": (now - timedelta(days=1)).strftime("%Y-%m-%d"),
+        }
+        return aliases.get(date_str.lower() if date_str else "", date_str)
+
     @filter.command("计划", alias={"创建日程", "新建日程", "添加日程", "安排"})
     async def create_schedule(self, event: AstrMessageEvent) -> MessageEventResult:
         """创建日程
@@ -930,6 +940,8 @@ class PlannerPlugin(Star):
 
         elif type == "events":
             filter_str = date_filter or "today"
+            # 翻译后端不认识的日期别名
+            filter_str = self._normalize_date_filter(filter_str)
             events = await self.api.get_events(filter_str)
             if events is None:
                 return "❌ 获取日程失败"
@@ -1041,6 +1053,7 @@ class PlannerPlugin(Star):
             return "❌ action 必须为 complete/cancel/delete_expense/delete_budget"
 
         filter_str = date_filter or "today"
+        filter_str = self._normalize_date_filter(filter_str)
         events = await self.api.get_events(filter_str)
         if not events:
             return f"📋 {filter_str} 没有日程"
