@@ -604,6 +604,31 @@ class ApiClient:
         """Parse natural language expense record."""
         return await self._request("POST", "/api/llm/parse_expense", json_data={"text": text})
 
+    async def llm_agent_command(self, text: str) -> Optional[Dict]:
+        """Execute multi-round agent command (query → operate).
+
+        Allows LLM to first query events/expenses then perform operations
+        in a single call. Supports complex tasks like "把今天没完成的推到明天".
+
+        Args:
+            text: User command text
+
+        Returns:
+            Command result dict with operations performed
+        """
+        return await self._request("POST", "/api/llm/agent-command", json_data={"text": text})
+
+    async def search(self, query: str) -> Optional[Dict]:
+        """Global search across events, notes, and goals.
+
+        Args:
+            query: Search keyword
+
+        Returns:
+            Dict with events, notes, goals arrays
+        """
+        return await self._request("GET", "/api/search", params={"q": query})
+
 
 _api_client: Optional[ApiClient] = None
 

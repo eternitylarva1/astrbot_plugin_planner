@@ -5,14 +5,17 @@
 ## [2.1.0] - 2026-06-25
 
 ### Added
-- 同步后端全部 API：Expenses / Budgets / Notes / Note Groups / User Contexts / AI Providers / Event history & restore（`services/api_client.py` 新增 59 个方法）
-- 新增 4 个 LLM 工具：`planner_expenses` / `planner_budgets` / `planner_notes` / `planner_context`
+- 同步后端全部 API：Expenses / Budgets / Notes / Note Groups / User Contexts / AI Providers / Event history & restore / Search / Agent Command（`services/api_client.py` 新增 61 个方法）
+- 新增 5 个 LLM 工具：`planner_expenses` / `planner_budgets` / `planner_notes` / `planner_context` / `planner_search`
 - 新增 `/现状` 命令：查看/添加/编辑/删除个人现状描述
+- 新增 `/搜索` 命令：全局搜索日程/笔记/目标
 - 扩展 `planner_query` 和 `planner_manage` 支持支出、预算操作
 - 图表新增视图：`/图表 预算`、`/图表 笔记`、`/图表 笔记:<id>`
 - 帮助命令更新，包含所有新增功能说明
 - Playwright 浏览器缺失时自动安装，无需手动操作
 - `llm_parse_expense` 接口支持
+- `llm_agent_command` 多轮工具调用接口支持
+- `GET /api/search` 全局搜索接口支持
 
 ### Fixed
 - 支出分类名自动映射（中文→英文 ID），解决保存后显示为"其他"的问题
@@ -20,7 +23,7 @@
 - 修复 `reorder_user_contexts` JSON key 错误（`ordered_ids` → `context_ids`）
 
 ### Changed
-- `main.py` 行数从 845 → 1415，LLM 工具从 5 个增至 9 个
+- `main.py` 行数从 845 → 1518，LLM 工具从 5 个增至 10 个
 - 更新插件描述，包含支出/预算/笔记/现状管理能力
 
 ## [2.0.1] - 2026-04-25

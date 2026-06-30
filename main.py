@@ -48,7 +48,7 @@ def _strip_cmd(text: str, *aliases: str) -> str:
   /待办   - 查看待办列表
 
 📌 智能管理（AI 对话即可操作）：
-  支出记录、预算管理、笔记管理
+  支出记录、预算管理、笔记管理、现状管理、全局搜索
 
 📌 AI 功能：
   /ai规划 - AI 模糊目标规划
@@ -671,7 +671,10 @@ class PlannerPlugin(Star):
             "\"帮我查笔记\"\n\n"
             "📌 个人现状\n"
             "/现状 /现状 添加 我在学Python\n"
-            "\"更新一下我的现状\"（AI 可通过对话操作）\n"
+            "\"更新一下我的现状\"（AI 可通过对话操作）\n\n"
+            "🔍 全局搜索\n"
+            "/搜索 关键词\n"
+            "\"帮我搜一下面试相关的\"（AI 可通过对话操作）\n"
         )
 
     @filter.command("设置", alias={"config"})
@@ -792,6 +795,55 @@ class PlannerPlugin(Star):
                 "/现状 编辑 <编号> <新内容>\n"
                 "/现状 删除 <编号>"
             )
+
+    @filter.command("搜索", alias={"搜索一下", "查找", "find"})
+    async def search_items(self, event: AstrMessageEvent) -> MessageEventResult:
+        """全局搜索日程、笔记、目标
+
+        用法：
+        /搜索 关键词
+        """
+        user_input = _strip_cmd(event.message_str, "搜索", "搜索一下", "查找", "find")
+
+        if not user_input:
+            yield event.plain_result("❗用法：/搜索 <关键词>\n示例：/搜索 开会")
+            return
+
+        result = await self.api.search(user_input.strip())
+        if not result:
+            yield event.plain_result("❌ 搜索失败，请检查后端服务")
+            return
+
+        events = result.get("events", [])
+        notes = result.get("notes", [])
+        goals = result.get("goals", [])
+
+        if not events and not notes and not goals:
+            yield event.plain_result(f"🔍 未找到包含「{user_input}」的内容")
+            return
+
+        lines = [f"🔍 搜索结果：「{user_input}」"]
+        if events:
+            lines.append("\n📅 日程")
+            for e in events[:5]:
+                start = e.get("start_time", "")
+                if isinstance(start, str) and start:
+                    try:
+                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start = dt.strftime("%m-%d %H:%M")
+                    except:
+                        pass
+                lines.append(f"• {e.get('title', '')} [{start}]")
+        if notes:
+            lines.append("\n📝 笔记")
+            for n in notes[:5]:
+                lines.append(f"• {n.get('title', '') or '(无标题)'}")
+        if goals:
+            lines.append("\n🎯 目标")
+            for g in goals[:5]:
+                lines.append(f"• {g.get('title', '')}")
+
+        yield event.plain_result("\n".join(lines))
 
     @filter.llm_tool(name="planner_create")
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
@@ -1409,6 +1461,54 @@ class PlannerPlugin(Star):
 
         else:
             return "❌ action 必须为 list/add/update/delete"
+
+    @filter.llm_tool(name="planner_search")
+    async def planner_search(
+        self,
+        event: AstrMessageEvent,
+        query: str,
+    ) -> str:
+        """全局搜索日程、笔记、目标
+
+        当用户想跨类型搜索时使用，如"搜一下面试相关"、"帮我找找Python相关的"。
+
+        Args:
+            query(str): 搜索关键字
+        """
+        if not query or not query.strip():
+            return "❌ 请提供搜索关键字"
+        result = await self.api.search(query.strip())
+        if not result:
+            return "❌ 搜索失败，请检查后端服务"
+
+        events = result.get("events", [])
+        notes = result.get("notes", [])
+        goals = result.get("goals", [])
+
+        if not events and not notes and not goals:
+            return f"🔍 未找到包含「{query}」的内容"
+
+        lines = [f"🔍 搜索结果：「{query}」"]
+        if events:
+            lines.append("\n📅 日程")
+            for e in events[:5]:
+                start = e.get("start_time", "")
+                if isinstance(start, str) and start:
+                    try:
+                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start = dt.strftime("%m-%d %H:%M")
+                    except:
+                        pass
+                lines.append(f"• {e.get('title', '')} [{start}]")
+        if notes:
+            lines.append("\n📝 笔记")
+            for n in notes[:3]:
+                lines.append(f"• {n.get('title', '') or '(无标题)'}")
+        if goals:
+            lines.append("\n🎯 目标")
+            for g in goals[:3]:
+                lines.append(f"• {g.get('title', '')}")
+        return "\n".join(lines)
 
     async def terminate(self):
         """插件卸载时关闭浏览器"""
