@@ -870,13 +870,23 @@ class PlannerPlugin(Star):
         logger.info(f"planner_create 调用，description={description}")
 
         try:
-            result = await self.api.llm_create(description)
-            logger.info(f"llm_create 返回: {result}")
+            result = await self.api.llm_command(description)
+            logger.info(f"llm_command 返回: {result}")
 
             if not result:
                 return "❌ 创建失败，请稍后重试或检查后端服务"
 
-            events = result if isinstance(result, list) else [result]
+            ops = result.get("operations", [])
+            events = [
+                {"title": op.get("title", ""),
+                 "start_time": op.get("start_time", ""),
+                 "end_time": op.get("end_time", ""),
+                 "id": op.get("id")}
+                for op in ops if op.get("domain") == "event" and op.get("action") == "event_create"
+            ]
+
+            if not events:
+                return f"💬 {result.get('summary', '已处理，但未创建新日程')}"
             lines = [f"✅ 已创建 {len(events)} 个日程"]
             for e in events:
                 start = e.get("start_time", "待定")

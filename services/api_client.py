@@ -48,7 +48,14 @@ class ApiClient:
                 ) as resp:
                     if resp.status == 204:
                         return {}
-                    data = await resp.json()
+                    content_type = resp.headers.get("Content-Type", "")
+                    try:
+                        data = await resp.json()
+                    except Exception:
+                        # 响应不是 JSON（如 500 HTML 错误页），读文本
+                        text = await resp.text()
+                        logger.error(f"API {method} {url} returned non-JSON {resp.status}: {text[:200]}")
+                        return None
                     if data.get("code") == 0 or resp.status == 200:
                         return data.get("data", data)
                     else:
