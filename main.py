@@ -859,10 +859,11 @@ class PlannerPlugin(Star):
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
         """创建日程
 
-        当用户想创建日程时使用，如"帮我安排明天开会"、"创建日程"。
+        当用户想创建日程、安排任务、记录待办事项时使用。
+        支持自然语言描述，如"明天下午3点开会2小时"、"今晚23点运动到明天凌晨1点"。
 
         Args:
-            description(str): 自然语言日程描述，如"明天下午3点开会2小时"
+            description(str): 自然语言日程描述，可包含时间、时长、日期等
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
@@ -920,11 +921,11 @@ class PlannerPlugin(Star):
         date_filter: Optional[str] = None,
         horizon: Optional[str] = None,
     ) -> str:
-        """查看日程/待办/目标
+        """查看日程/待办/目标/支出/预算
 
         Args:
-            type(str): 查询类型 - todos/events/goals
-            date_filter(str): 日期过滤，如 today/week/month（用于 todos/events）
+            type(str): 查询类型 - todos/events/goals/expenses/budgets
+            date_filter(str): 日期过滤，如 today/tomorrow/week/month（用于 todos/events/expenses）
             horizon(str): 规划范围，如 short/semester/long（用于 goals）
         """
         if type == "todos":
@@ -1032,18 +1033,17 @@ class PlannerPlugin(Star):
         expense_id: Optional[int] = None,
         budget_id: Optional[int] = None,
     ) -> str:
-        """完成或取消日程/支出/预算
+        """完成或取消日程，也可删除支出/预算
 
         Args:
             action(str): 操作类型 - complete/cancel/delete_expense/delete_budget
             event_id(int): 日程 ID（complete/cancel时需要）
-            keyword(str): 日程名称关键字（用于模糊匹配）
-            date_filter(str): 查询日期，支持：
+            keyword(str): 日程名称关键字，用于模糊匹配
+            date_filter(str): 查询日期（用于确定日程范围），支持：
                 - today/tomorrow/week/month/all
                 - 特定日期如 2026-04-26
-                - 自然语言如 明天/下周/本周
-            expense_id(int): 支出记录 ID（delete_expense时需要）
-            budget_id(int): 预算 ID（delete_budget时需要）
+            expense_id(int): 支出ID（delete_expense时需要）
+            budget_id(int): 预算ID（delete_budget时需要）
         """
         if action == "delete_expense":
             if not expense_id:
