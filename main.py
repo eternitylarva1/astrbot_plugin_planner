@@ -860,10 +860,10 @@ class PlannerPlugin(Star):
         """创建日程
 
         当用户想创建日程、安排任务、记录待办事项时使用。
-        支持自然语言描述，如"明天下午3点开会2小时"、"今晚23点运动到明天凌晨1点"。
+        每次调用只创建一个日程，不要把多个任务合并。
 
         Args:
-            description(str): 自然语言日程描述，可包含时间、时长、日期等
+            description(str): 单一日程的自然语言描述，如"明天下午3点开会2小时"
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
