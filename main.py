@@ -859,11 +859,11 @@ class PlannerPlugin(Star):
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
         """创建日程
 
-        当用户想创建日程、安排任务、记录待办事项时使用。
-        每次调用只创建一个日程，不要用逗号连接多个任务。
+        传入日程描述即可。如果要创建多个连续任务，可以一次传入全部，
+        后端会按顺序排开时间。但不要把无关的多个独立主题混在一起。
 
         Args:
-            description(str): 单一日程描述，如"明天下午3点开会2小时"
+            description(str): 日程描述，如"明天下午3点开会2小时"
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
@@ -876,6 +876,10 @@ class PlannerPlugin(Star):
 
             if not result:
                 return "❌ 创建失败，请稍后重试或检查后端服务"
+
+            # 后端可能返回 code!=0 但 http 200 的错误
+            if isinstance(result, dict) and result.get("code") == 1:
+                return f"❌ {result.get('message', '创建失败')}"
 
             ops = result.get("operations", [])
             events = [
