@@ -859,12 +859,11 @@ class PlannerPlugin(Star):
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
         """创建日程
 
-        传入日程描述即可。多个连续任务使用"先A，再B，最后C"格式一次传入，
-        不要分多次调用、也不要用逗号拼接无关任务。
+        传入日程描述即可。多个连续任务用分号分隔一次传入，不要分多次调用。
 
         Args:
-            description(str): 如"明天下午3点开会2小时"，
-                              或"先玩游戏30分钟，再写稿子30分钟，最后做视频30分钟"
+            description(str): 单个任务如"明天下午3点开会2小时"；
+                              多个任务如"玩游戏30分钟；写稿子30分钟；做视频30分钟"
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
