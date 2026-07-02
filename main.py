@@ -1228,6 +1228,8 @@ class PlannerPlugin(Star):
                 expense_data["category"] = _cat_map.get(category, category)
             if note:
                 expense_data["note"] = note
+            # 显式传日期，避免后端默认值偏差
+            expense_data["expense_date"] = date.today().isoformat()
             result = await self.api.create_expense(expense_data)
             if result:
                 cat_str = category or "未分类"
