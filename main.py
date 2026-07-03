@@ -1176,19 +1176,21 @@ class PlannerPlugin(Star):
         note: Optional[str] = None,
         expense_id: Optional[int] = None,
         date_filter: Optional[str] = None,
+        expense_date: Optional[str] = None,
     ) -> str:
         """支出记录管理
 
         Args:
             action(str): 操作类型
                 - list: 列出支出记录（需要 date_filter: today/week/month）
-                - create: 记录支出（需要 amount, 可选 category/note）
+                - create: 记录支出（需要 amount, 可选 category/note/expense_date）
                 - delete: 删除支出（需要 expense_id）
             amount(float): 支出金额（create时需要）
             category(str): 支出分类，如"餐饮/交通/购物/娱乐/其他"
             note(str): 支出备注
             expense_id(int): 支出记录ID（delete时需要）
             date_filter(str): 日期过滤（list时使用：today/week/month）
+            expense_date(str): 支出日期，如"2026-07-01"或"昨天"（create时可选，默认今天）
         """
         if action == "list":
             filter_str = date_filter or "month"
@@ -1228,8 +1230,8 @@ class PlannerPlugin(Star):
                 expense_data["category"] = _cat_map.get(category, category)
             if note:
                 expense_data["note"] = note
-            # 显式传日期，避免后端默认值偏差
-            expense_data["expense_date"] = date.today().isoformat()
+            # 显式传日期，用户指定优先，否则默认今天
+            expense_data["expense_date"] = expense_date or date.today().isoformat()
             result = await self.api.create_expense(expense_data)
             if result:
                 cat_str = category or "未分类"
