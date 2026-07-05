@@ -363,18 +363,34 @@ class PlannerPlugin(Star):
         lines = [f"📅 日程列表（{date_filter}）"]
         for e in events:
             start = e.get("start_time")
+            end = e.get("end_time")
+            start_dt = end_dt = None
             if start:
                 try:
-                    dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                    start_str = dt.strftime("%m-%d %H:%M")
+                    start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                    start_str = start_dt.strftime("%m-%d %H:%M")
                 except:
                     start_str = str(start)[:16]
             else:
                 start_str = "待定"
+            if end:
+                try:
+                    end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                    end_str = end_dt.strftime("%H:%M")
+                except:
+                    end_str = str(end)[11:16] if len(end) >= 16 else ""
+            else:
+                end_str = ""
+            duration = ""
+            if start_dt and end_dt:
+                mins = int((end_dt - start_dt).total_seconds() / 60)
+                if mins > 0:
+                    duration = f", {mins}分钟"
+            time_info = f"{start_str}-{end_str}{duration}" if end_str else start_str
 
             status = "✓" if e.get("status") == "done" else "○"
             title = e.get("title", "未知")
-            lines.append(f"{status} {title} [{start_str}]")
+            lines.append(f"{status} {title} [{time_info}]")
 
         yield event.plain_result("\n".join(lines))
 
@@ -957,15 +973,31 @@ class PlannerPlugin(Star):
             lines = [f"📋 待办列表（共 {len(pending)} 项）"]
             for i, e in enumerate(pending[:20], 1):
                 start = e.get("start_time", "")
+                end = e.get("end_time", "")
+                start_dt = end_dt = None
                 if start:
                     try:
-                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                        start_str = dt.strftime("%m-%d %H:%M")
+                        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start_str = start_dt.strftime("%m-%d %H:%M")
                     except:
                         start_str = str(start)[:16]
                 else:
                     start_str = "待定"
-                lines.append(f"{i}. {e.get('title', '未知')} [{start_str}]")
+                if end:
+                    try:
+                        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                        end_str = end_dt.strftime("%H:%M")
+                    except:
+                        end_str = str(end)[11:16] if len(end) >= 16 else ""
+                else:
+                    end_str = ""
+                duration = ""
+                if start_dt and end_dt:
+                    mins = int((end_dt - start_dt).total_seconds() / 60)
+                    if mins > 0:
+                        duration = f", {mins}分钟"
+                time_info = f"{start_str}-{end_str}{duration}" if end_str else start_str
+                lines.append(f"{i}. {e.get('title', '未知')} [{time_info}]")
             return "\n".join(lines)
 
         elif type == "events":
@@ -980,16 +1012,32 @@ class PlannerPlugin(Star):
             lines = [f"📅 日程列表（{filter_str}）"]
             for e in events:
                 start = e.get("start_time", "")
+                end = e.get("end_time", "")
+                start_dt = end_dt = None
                 if start:
                     try:
-                        dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                        start_str = dt.strftime("%m-%d %H:%M")
+                        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                        start_str = start_dt.strftime("%m-%d %H:%M")
                     except:
                         start_str = str(start)[:16]
                 else:
                     start_str = "待定"
+                if end:
+                    try:
+                        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                        end_str = end_dt.strftime("%H:%M")
+                    except:
+                        end_str = str(end)[11:16] if len(end) >= 16 else ""
+                else:
+                    end_str = ""
+                duration = ""
+                if start_dt and end_dt:
+                    mins = int((end_dt - start_dt).total_seconds() / 60)
+                    if mins > 0:
+                        duration = f", {mins}分钟"
+                time_info = f"{start_str}-{end_str}{duration}" if end_str else start_str
                 status = "✓" if e.get("status") == "done" else "○"
-                lines.append(f"{status} {e.get('title', '未知')} [{start_str}]")
+                lines.append(f"{status} {e.get('title', '未知')} [{time_info}]")
             return "\n".join(lines)
 
         elif type == "goals":
@@ -1051,18 +1099,22 @@ class PlannerPlugin(Star):
         date_filter: Optional[str] = None,
         expense_id: Optional[int] = None,
         budget_id: Optional[int] = None,
+        new_title: Optional[str] = None,
+        new_start_time: Optional[str] = None,
+        new_end_time: Optional[str] = None,
     ) -> str:
-        """完成或取消日程，也可删除支出/预算
+        """完成/取消/修改日程，也可删除支出/预算
 
         Args:
-            action(str): 操作类型 - complete/cancel/delete_expense/delete_budget
-            event_id(int): 日程 ID（complete/cancel时需要）
+            action(str): 操作类型 - complete/cancel/update/delete_expense/delete_budget
+            event_id(int): 日程 ID（complete/cancel/update时需要）
             keyword(str): 日程名称关键字，用于模糊匹配
-            date_filter(str): 查询日期（用于确定日程范围），支持：
-                - today/tomorrow/week/month/all
-                - 特定日期如 2026-04-26
+            date_filter(str): 查询日期（用于确定日程范围）
             expense_id(int): 支出ID（delete_expense时需要）
             budget_id(int): 预算ID（delete_budget时需要）
+            new_title(str): 新标题（update时需要）
+            new_start_time(str): 新开始时间，如"2026-07-05T20:00"（update时可选）
+            new_end_time(str): 新结束时间（update时可选）
         """
         if action == "delete_expense":
             if not expense_id:
@@ -1078,8 +1130,35 @@ class PlannerPlugin(Star):
                 return "✅ 已删除预算"
             return "❌ 删除失败"
 
+        if action == "update":
+            target_id = event_id
+            if not target_id and keyword:
+                events = await self.api.get_events(date_filter or "today")
+                if events:
+                    matched = [e for e in events if keyword in e.get("title", "")]
+                    if not matched:
+                        matched = [e for e in await (self.api.get_events("month") or []) if keyword in e.get("title", "")]
+                    if matched:
+                        target_id = matched[0].get("id")
+            if not target_id:
+                return "❌ 修改日程需要提供 event_id 或 keyword"
+            data = {}
+            if new_title:
+                data["title"] = new_title
+            if new_start_time:
+                data["start_time"] = new_start_time
+            if new_end_time:
+                data["end_time"] = new_end_time
+            if not data:
+                return "❌ 请至少提供一个要修改的字段（new_title/new_start_time/new_end_time）"
+            result = await self.api.update_event(target_id, data)
+            if result:
+                changes = ", ".join(data.keys())
+                return f"✅ 已修改日程 {target_id}（{changes}）"
+            return "❌ 修改失败"
+
         if action not in ("complete", "cancel"):
-            return "❌ action 必须为 complete/cancel/delete_expense/delete_budget"
+            return "❌ action 必须为 complete/cancel/update/delete_expense/delete_budget"
 
         filter_str = date_filter or "today"
         filter_str = self._normalize_date_filter(filter_str)
