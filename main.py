@@ -286,14 +286,29 @@ class PlannerPlugin(Star):
         logger.info(f"create_schedule 调用，user_input={user_input}")
 
         try:
-            result = await self.api.llm_create(user_input)
-            logger.info(f"llm_create 返回: {result}")
+            result = await self.api.llm_command(user_input)
+            logger.info(f"llm_command 返回: {result}")
 
             if not result:
                 yield event.plain_result("❌ 创建失败，请稍后重试或检查后端服务")
                 return
 
-            events = result if isinstance(result, list) else [result]
+            if isinstance(result, dict) and result.get("code") == 1:
+                yield event.plain_result(f"❌ {result.get('message', '创建失败')}")
+                return
+
+            ops = result.get("operations", [])
+            events = [
+                {"title": op.get("title", ""),
+                 "start_time": op.get("start_time", ""),
+                 "end_time": op.get("end_time", ""),
+                 "id": op.get("id")}
+                for op in ops if op.get("domain") == "event" and op.get("action") == "event_create"
+            ]
+
+            if not events:
+                yield event.plain_result(f"💬 {result.get('summary') or '已处理，但未创建新日程'}")
+                return
             lines = [f"✅ 已创建 {len(events)} 个日程"]
             for e in events:
                 start = e.get("start_time", "待定")
@@ -891,7 +906,7 @@ class PlannerPlugin(Star):
             ]
 
             if not events:
-                return f"💬 {result.get('summary', '已处理，但未创建新日程')}"
+                return f"💬 {result.get('summary') or '已处理，但未创建新日程'}"
             lines = [f"✅ 已创建 {len(events)} 个日程"]
             for e in events:
                 start = e.get("start_time", "待定")
