@@ -888,13 +888,15 @@ class PlannerPlugin(Star):
 
     @filter.llm_tool(name="planner_create")
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
-        """创建日程
+        """创建日程，创建后建议调用 planner_review 检查时间冲突
 
         传入日程描述即可。多个连续任务用分号分隔一次传入，不要分多次调用。
+        创建完成后应调用 planner_review 检查是否有时间冲突，
+        发现问题用 planner_manage(action='update') 修正。
 
         Args:
             description(str): 单个任务如"明天下午3点开会2小时"；
-                              多个任务如"玩游戏30分钟；写稿子30分钟；做视频30分钟"
+                              多个任务如"跑步30分钟；写稿子60分钟；做视频30分钟"
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
@@ -1643,7 +1645,9 @@ class PlannerPlugin(Star):
     ) -> str:
         """检查日程安排是否合理，发现时间冲突或顺序问题
 
-        创建日程后调用此工具做二次检查。如果发现问题，应向用户确认再修改。
+        创建日程后调用此工具做二次检查。如果发现同一时间有多个日程
+        或顺序不合理，用 planner_manage(action='update') 修正。
+        检查通过则向用户确认安排。
 
         Args:
             date_filter(str): 要检查的日期，如 today/tomorrow
