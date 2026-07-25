@@ -1635,6 +1635,73 @@ class PlannerPlugin(Star):
                 lines.append(f"• {g.get('title', '')}")
         return "\n".join(lines)
 
+    @filter.llm_tool(name="planner_review")
+    async def planner_review(
+        self,
+        event: AstrMessageEvent,
+        date_filter: Optional[str] = None,
+    ) -> str:
+        """检查日程安排是否合理，发现时间冲突或顺序问题
+
+        创建日程后调用此工具做二次检查。如果发现问题，应向用户确认再修改。
+
+        Args:
+            date_filter(str): 要检查的日期，如 today/tomorrow
+        """
+        filter_str = date_filter or "today"
+        filter_str = self._normalize_date_filter(filter_str)
+        events = await self.api.get_events(filter_str)
+        if events is None:
+            return "❌ 获取日程失败"
+        if not events:
+            return f"✅ {filter_str} 暂无日程，无需检查"
+
+        pending = [e for e in events if e.get("status") != "done"]
+        if len(pending) < 2:
+            return f"✅ {filter_str} 只有 1 个待办，无需检查冲突"
+
+        issues = []
+        sorted_events = sorted(pending, key=lambda e: e.get("start_time", "") or "")
+        for i, e in enumerate(sorted_events):
+            start = e.get("start_time", "")
+            end = e.get("end_time", "")
+            title = e.get("title", "未知")
+            eid = e.get("id", "?")
+            for j in range(i + 1, len(sorted_events)):
+                e2 = sorted_events[j]
+                s2 = e2.get("start_time", "")
+                e2_title = e2.get("title", "未知")
+                if start and s2 and start == s2:
+                    issues.append(f"⚠ 时间相同: {title} 和 {e2_title} 都是 {start[:16]}")
+
+        if issues:
+            lines = ["🔍 日程检查发现问题", "━━━━━━━━━━━━━━━"]
+            lines.extend(issues)
+            lines.append("\n是否要修改？")
+            return "\n".join(lines)
+
+        # 也简单列出顺序供确认
+        lines = ["✅ 日程检查通过，当前顺序：", "━━━━━━━━━━━━━━━"]
+        for i, e in enumerate(sorted_events, 1):
+            start = e.get("start_time", "")
+            end = e.get("end_time", "")
+            title = e.get("title", "未知")
+            if start:
+                try:
+                    dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                    start = dt.strftime("%H:%M")
+                except:
+                    start = start[:16]
+            if end:
+                try:
+                    dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                    end = dt.strftime("%H:%M")
+                except:
+                    end = end[11:16] if len(end) >= 16 else ""
+            time_info = f"{start}-{end}" if end else start
+            lines.append(f"{i}. {title} [{time_info}]")
+        return "\n".join(lines)
+
     async def terminate(self):
         """插件卸载时关闭浏览器"""
         if self._browser_context:
