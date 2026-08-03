@@ -888,13 +888,13 @@ class PlannerPlugin(Star):
 
     @filter.llm_tool(name="planner_create")
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
-        """创建日程，创建后建议调用 planner_review 检查时间冲突
+        """创建日程
 
-        传入用户的原始描述，不要自己总结或省略时间和时长约束。
-        多个连续任务用分号分隔，如"晚上18:00开始学习90分钟；然后写稿子60分钟"。
+        传入你整理好的完整安排，必须包含具体时间和时长，不要只传任务名。
+        多个任务用分号分隔，如"18:00开始学Word制作90分钟；19:30手游商单60分钟"。
 
         Args:
-            description(str): 保留用户所有时间信息的完整描述
+            description(str): 含具体时间的完整日程描述，不要省略时间信息
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
