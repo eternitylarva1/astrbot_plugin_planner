@@ -890,14 +890,11 @@ class PlannerPlugin(Star):
     async def planner_create(self, event: AstrMessageEvent, description: str) -> str:
         """创建日程，创建后建议调用 planner_review 检查时间冲突
 
-        传入日程描述即可。多个连续任务用分号分隔一次传入，不要分多次调用。
-        描述中必须包含用户指定的时间约束和时长，如"晚上18:00开始"、"学习90分钟"。
-        创建完成后应调用 planner_review 检查是否有时间冲突，
-        发现问题用 planner_manage(action='update') 修正。
+        传入用户的原始描述，不要自己总结或省略时间和时长约束。
+        多个连续任务用分号分隔，如"晚上18:00开始学习90分钟；然后写稿子60分钟"。
 
         Args:
-            description(str): 包含具体时间和时长的日程描述，
-                              多个任务如"18:00开始学习Word制作90分钟；然后手游商单60分钟"
+            description(str): 保留用户所有时间信息的完整描述
         """
         if not description or not description.strip():
             return "请提供日程描述，如：明天下午3点开会"
